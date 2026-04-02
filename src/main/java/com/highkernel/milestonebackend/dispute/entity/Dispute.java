@@ -1,15 +1,7 @@
 package com.highkernel.milestonebackend.dispute.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp;
+import jakarta.persistence.*;
+import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.time.OffsetDateTime;
@@ -26,7 +18,6 @@ public class Dispute {
 
     @Id
     @UuidGenerator
-    @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
     @Column(name = "milestone_id")
@@ -35,16 +26,20 @@ public class Dispute {
     @Column(name = "client_id")
     private UUID clientId;
 
-    @Column(name = "reason")
+    @Column(name = "freelancer_id")
+    private UUID freelancerId;
+
     private String reason;
 
-    @Column(name = "status")
     private String status;
 
-    @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "freelancer_id")
-    private UUID freelancerId;
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = OffsetDateTime.now();
+        }
+    }
 }

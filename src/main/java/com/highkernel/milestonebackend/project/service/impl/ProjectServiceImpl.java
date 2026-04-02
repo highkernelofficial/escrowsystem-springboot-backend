@@ -1,57 +1,205 @@
 package com.highkernel.milestonebackend.project.service.impl;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.highkernel.milestonebackend.ai.client.AiValidatorClient;
+import com.highkernel.milestonebackend.ai.dto.MilestoneGenerationItem;
+import com.highkernel.milestonebackend.ai.dto.MilestoneGenerationRequest;
+import com.highkernel.milestonebackend.ai.dto.MilestoneGenerationResponse;
 import com.highkernel.milestonebackend.exception.BadRequestException;
+import com.highkernel.milestonebackend.milestone.dto.MilestoneItemRequest;
+import com.highkernel.milestonebackend.milestone.dto.MilestoneResponse;
+import com.highkernel.milestonebackend.milestone.entity.Milestone;
+import com.highkernel.milestonebackend.milestone.repository.MilestoneRepository;
+import com.highkernel.milestonebackend.project.dto.ConfirmProjectCreateRequest;
+import com.highkernel.milestonebackend.project.dto.GeneratedMilestonesPreviewResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectWithMilestonesResponse;
 import com.highkernel.milestonebackend.project.entity.Project;
 import com.highkernel.milestonebackend.project.repository.ProjectRepository;
 import com.highkernel.milestonebackend.project.service.ProjectService;
-import com.highkernel.milestonebackend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ProjectServiceImpl implements ProjectService {
 
     private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
-    private final ObjectMapper objectMapper;
+    private final MilestoneRepository milestoneRepository;
+    private final AiValidatorClient aiValidatorClient;
 
     @Override
     public ProjectResponse createProject(String authenticatedUserId, ProjectCreateRequest request) {
-        UUID clientId = parseUuid(authenticatedUserId, "Invalid authenticated user id");
-
-        userRepository.findById(clientId)
-                .orElseThrow(() -> new BadRequestException("Authenticated user not found"));
+        UUID clientId = parseUUID(authenticatedUserId);
 
         Project project = Project.builder()
                 .clientId(clientId)
                 .title(request.getTitle())
                 .description(request.getDescription())
-                .techStack(toJson(request.getTechStack()))
+                .techStack(request.getTechStack())
                 .expectedOutcome(request.getExpectedOutcome())
-                .status(request.getStatus() != null && !request.getStatus().isBlank() ? request.getStatus() : "OPEN")
+                .status(request.getStatus() != null ? request.getStatus() : "OPEN")
+                .appId(request.getAppId())
+                .totalAmount(request.getTotalAmount())
+                .build();
+
+        return mapToResponse(projectRepository.save(project));
+    }
+
+    @Override
+    public GeneratedMilestonesPreviewResponse generateMilestonesPreview(String authenticatedUserId, ProjectCreateRequest request) {
+        parseUUID(authenticatedUserId);
+
+        MilestoneGenerationRequest aiRequest = MilestoneGenerationRequest.builder()
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .techStack(request.getTechStack())
+                .expectedOutcome(request.getExpectedOutcome())
+                .totalBudget(request.getTotalAmount())
+                .build();
+
+        MilestoneGenerationResponse aiResponse = aiValidatorClient.generateMilestones(aiRequest);
+
+        if (aiResponse == null || aiResponse.getMilestones() == null || aiResponse.getMilestones().isEmpty()) {
+            throw new BadRequestException("AI validator returned no milestones");
+        }
+
+        List<MilestoneResponse> previewMilestones = aiResponse.getMilestones()
+                .stream()
+                .map(this::mapGeneratedMilestonePreview)
+                .toList();
+
+        return GeneratedMilestonesPreviewResponse.builder()
+                .milestones(previewMilestones)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ProjectWithMilestonesResponse confirmCreateProject(String authenticatedUserId, ConfirmProjectCreateRequest request) {
+        UUID clientId = parseUUID(authenticatedUserId);
+
+        Project project = Project.builder()
+                .clientId(clientId)
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .techStack(request.getTechStack())
+                .expectedOutcome(request.getExpectedOutcome())
+                .status(request.getStatus() != null ? request.getStatus() : "OPEN")
                 .appId(request.getAppId())
                 .totalAmount(request.getTotalAmount())
                 .build();
 
         Project savedProject = projectRepository.save(project);
-        return mapToResponse(savedProject);
+
+        List<Milestone> milestonesToSave = request.getMilestones()
+                .stream()
+                .map(item -> buildMilestoneFromConfirmedItem(savedProject.getId(), item))
+                .toList();
+
+        List<MilestoneResponse> savedMilestones = milestoneRepository.saveAll(milestonesToSave)
+                .stream()
+                .map(this::mapMilestoneToResponse)
+                .toList();
+
+        return ProjectWithMilestonesResponse.builder()
+                .project(mapToResponse(savedProject))
+                .milestones(savedMilestones)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ProjectWithMilestonesResponse createProjectWithGeneratedMilestones(String authenticatedUserId, ProjectCreateRequest request) {
+        UUID clientId = parseUUID(authenticatedUserId);
+
+        MilestoneGenerationRequest aiRequest = MilestoneGenerationRequest.builder()
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .techStack(request.getTechStack())
+                .expectedOutcome(request.getExpectedOutcome())
+                .totalBudget(request.getTotalAmount())
+                .build();
+
+        MilestoneGenerationResponse aiResponse = aiValidatorClient.generateMilestones(aiRequest);
+
+        if (aiResponse == null || aiResponse.getMilestones() == null || aiResponse.getMilestones().isEmpty()) {
+            throw new BadRequestException("AI validator returned no milestones");
+        }
+
+        Project project = Project.builder()
+                .clientId(clientId)
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .techStack(request.getTechStack())
+                .expectedOutcome(request.getExpectedOutcome())
+                .status(request.getStatus() != null ? request.getStatus() : "OPEN")
+                .appId(request.getAppId())
+                .totalAmount(request.getTotalAmount())
+                .build();
+
+        Project savedProject = projectRepository.save(project);
+
+        List<Milestone> milestonesToSave = aiResponse.getMilestones()
+                .stream()
+                .map(item -> buildGeneratedMilestone(savedProject.getId(), item))
+                .toList();
+
+        List<MilestoneResponse> savedMilestones = milestoneRepository.saveAll(milestonesToSave)
+                .stream()
+                .map(this::mapMilestoneToResponse)
+                .toList();
+
+        return ProjectWithMilestonesResponse.builder()
+                .project(mapToResponse(savedProject))
+                .milestones(savedMilestones)
+                .build();
     }
 
     @Override
     public List<ProjectResponse> getAllProjects() {
-        return projectRepository.findAllByOrderByCreatedAtDesc()
+        return projectRepository.findAll()
                 .stream()
                 .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    public List<ProjectWithMilestonesResponse> getAllProjectsWithMilestones() {
+        List<Project> projects = projectRepository.findAllByOrderByCreatedAtDesc();
+
+        if (projects.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<UUID> projectIds = projects.stream()
+                .map(Project::getId)
+                .toList();
+
+        List<Milestone> allMilestones = milestoneRepository.findByProjectIdInOrderByCreatedAtAsc(projectIds);
+
+        Map<UUID, List<Milestone>> milestonesByProjectId = allMilestones.stream()
+                .collect(Collectors.groupingBy(Milestone::getProjectId));
+
+        return projects.stream()
+                .map(project -> ProjectWithMilestonesResponse.builder()
+                        .project(mapToResponse(project))
+                        .milestones(
+                                milestonesByProjectId.getOrDefault(project.getId(), Collections.emptyList())
+                                        .stream()
+                                        .map(this::mapMilestoneToResponse)
+                                        .toList()
+                        )
+                        .build()
+                )
                 .toList();
     }
 
@@ -62,25 +210,166 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public List<ProjectResponse> getProjectsByClientId(UUID clientId) {
-        userRepository.findById(clientId)
-                .orElseThrow(() -> new BadRequestException("Client not found"));
+    public ProjectWithMilestonesResponse getProjectWithMilestones(UUID projectId) {
+        Project project = getProjectOrThrow(projectId);
 
-        return projectRepository.findByClientIdOrderByCreatedAtDesc(clientId)
+        List<MilestoneResponse> milestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(projectId)
+                .stream()
+                .map(this::mapMilestoneToResponse)
+                .toList();
+
+        return ProjectWithMilestonesResponse.builder()
+                .project(mapToResponse(project))
+                .milestones(milestones)
+                .build();
+    }
+
+    @Override
+    public List<ProjectResponse> getProjectsByClientId(UUID clientId) {
+        return projectRepository.findByClientId(clientId)
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
     }
 
     @Override
-    public ProjectResponse updateProject(String authenticatedUserId, UUID projectId, ProjectUpdateRequest request) {
-        UUID authUserId = parseUuid(authenticatedUserId, "Invalid authenticated user id");
+    public List<ProjectResponse> getMyOwnedProjects(String authenticatedUserId) {
+        UUID clientId = parseUUID(authenticatedUserId);
+
+        return projectRepository.findByClientId(clientId)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    public List<ProjectWithMilestonesResponse> getMyOwnedProjectsWithMilestones(String authenticatedUserId) {
+        UUID clientId = parseUUID(authenticatedUserId);
+
+        List<Project> projects = projectRepository.findByClientId(clientId)
+                .stream()
+                .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
+                .toList();
+
+        if (projects.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<UUID> projectIds = projects.stream()
+                .map(Project::getId)
+                .toList();
+
+        List<Milestone> allMilestones = milestoneRepository.findByProjectIdInOrderByCreatedAtAsc(projectIds);
+
+        Map<UUID, List<Milestone>> milestonesByProjectId = allMilestones.stream()
+                .collect(Collectors.groupingBy(Milestone::getProjectId));
+
+        return projects.stream()
+                .map(project -> ProjectWithMilestonesResponse.builder()
+                        .project(mapToResponse(project))
+                        .milestones(
+                                milestonesByProjectId.getOrDefault(project.getId(), Collections.emptyList())
+                                        .stream()
+                                        .map(this::mapMilestoneToResponse)
+                                        .toList()
+                        )
+                        .build()
+                )
+                .toList();
+    }
+
+    @Override
+    public ProjectWithMilestonesResponse getMyOwnedProjectWithMilestones(String authenticatedUserId, UUID projectId) {
+        UUID clientId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(projectId);
+        validateProjectOwnership(clientId, project);
+
+        List<MilestoneResponse> milestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(projectId)
+                .stream()
+                .map(this::mapMilestoneToResponse)
+                .toList();
+
+        return ProjectWithMilestonesResponse.builder()
+                .project(mapToResponse(project))
+                .milestones(milestones)
+                .build();
+    }
+
+    @Override
+    public List<ProjectResponse> getMyWorkspaceProjects(String authenticatedUserId) {
+        UUID freelancerId = parseUUID(authenticatedUserId);
+
+        return projectRepository.findWorkspaceProjectsByFreelancerId(freelancerId)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    public List<ProjectWithMilestonesResponse> getMyWorkspaceProjectsWithMilestones(String authenticatedUserId) {
+        UUID freelancerId = parseUUID(authenticatedUserId);
+
+        List<Project> projects = projectRepository.findWorkspaceProjectsByFreelancerId(freelancerId);
+
+        if (projects.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<UUID> projectIds = projects.stream()
+                .map(Project::getId)
+                .toList();
+
+        List<Milestone> allMilestones = milestoneRepository.findByProjectIdInOrderByCreatedAtAsc(projectIds);
+
+        Map<UUID, List<Milestone>> milestonesByProjectId = allMilestones.stream()
+                .collect(Collectors.groupingBy(Milestone::getProjectId));
+
+        return projects.stream()
+                .map(project -> ProjectWithMilestonesResponse.builder()
+                        .project(mapToResponse(project))
+                        .milestones(
+                                milestonesByProjectId.getOrDefault(project.getId(), Collections.emptyList())
+                                        .stream()
+                                        .map(this::mapMilestoneToResponse)
+                                        .toList()
+                        )
+                        .build()
+                )
+                .toList();
+    }
+
+    @Override
+    public ProjectWithMilestonesResponse getMyWorkspaceProjectWithMilestones(String authenticatedUserId, UUID projectId) {
+        UUID freelancerId = parseUUID(authenticatedUserId);
 
         Project project = getProjectOrThrow(projectId);
 
-        if (!project.getClientId().equals(authUserId)) {
-            throw new BadRequestException("You can update only your own project");
+        boolean isPartOfProject = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(projectId)
+                .stream()
+                .anyMatch(milestone -> freelancerId.equals(milestone.getAssignedFreelancer()));
+
+        if (!isPartOfProject) {
+            throw new BadRequestException("You are not assigned to this project");
         }
+
+        List<MilestoneResponse> milestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(projectId)
+                .stream()
+                .map(this::mapMilestoneToResponse)
+                .toList();
+
+        return ProjectWithMilestonesResponse.builder()
+                .project(mapToResponse(project))
+                .milestones(milestones)
+                .build();
+    }
+
+    @Override
+    public ProjectResponse updateProject(String authenticatedUserId, UUID projectId, ProjectUpdateRequest request) {
+        UUID userId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(projectId);
+        validateProjectOwnership(userId, project);
 
         if (request.getTitle() != null) {
             project.setTitle(request.getTitle());
@@ -89,7 +378,7 @@ public class ProjectServiceImpl implements ProjectService {
             project.setDescription(request.getDescription());
         }
         if (request.getTechStack() != null) {
-            project.setTechStack(toJson(request.getTechStack()));
+            project.setTechStack(request.getTechStack());
         }
         if (request.getExpectedOutcome() != null) {
             project.setExpectedOutcome(request.getExpectedOutcome());
@@ -104,21 +393,102 @@ public class ProjectServiceImpl implements ProjectService {
             project.setTotalAmount(request.getTotalAmount());
         }
 
-        Project updatedProject = projectRepository.save(project);
-        return mapToResponse(updatedProject);
+        return mapToResponse(projectRepository.save(project));
     }
 
     @Override
     public void deleteProject(String authenticatedUserId, UUID projectId) {
-        UUID authUserId = parseUuid(authenticatedUserId, "Invalid authenticated user id");
+        UUID userId = parseUUID(authenticatedUserId);
 
         Project project = getProjectOrThrow(projectId);
-
-        if (!project.getClientId().equals(authUserId)) {
-            throw new BadRequestException("You can delete only your own project");
-        }
+        validateProjectOwnership(userId, project);
 
         projectRepository.delete(project);
+    }
+
+    @Override
+    public List<MilestoneResponse> generateMilestones(String authenticatedUserId, UUID projectId, Boolean overwriteExisting) {
+        UUID userId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(projectId);
+        validateProjectOwnership(userId, project);
+
+        long existingMilestoneCount = milestoneRepository.countByProjectId(projectId);
+        if (existingMilestoneCount > 0 && !Boolean.TRUE.equals(overwriteExisting)) {
+            throw new BadRequestException("Milestones already exist for this project. Pass overwriteExisting=true to regenerate.");
+        }
+
+        if (existingMilestoneCount > 0) {
+            milestoneRepository.deleteByProjectId(projectId);
+        }
+
+        MilestoneGenerationRequest aiRequest = MilestoneGenerationRequest.builder()
+                .title(project.getTitle())
+                .description(project.getDescription())
+                .techStack(project.getTechStack())
+                .expectedOutcome(project.getExpectedOutcome())
+                .totalBudget(project.getTotalAmount())
+                .build();
+
+        MilestoneGenerationResponse aiResponse = aiValidatorClient.generateMilestones(aiRequest);
+
+        if (aiResponse == null || aiResponse.getMilestones() == null || aiResponse.getMilestones().isEmpty()) {
+            throw new BadRequestException("AI validator returned no milestones");
+        }
+
+        List<Milestone> milestones = aiResponse.getMilestones()
+                .stream()
+                .map(item -> buildGeneratedMilestone(projectId, item))
+                .toList();
+
+        return milestoneRepository.saveAll(milestones)
+                .stream()
+                .map(this::mapMilestoneToResponse)
+                .toList();
+    }
+
+    private Milestone buildGeneratedMilestone(UUID projectId, MilestoneGenerationItem item) {
+        return Milestone.builder()
+                .projectId(projectId)
+                .title(item.getTitle())
+                .description(item.getDescription())
+                .amount(item.getAmount())
+                .percentage(item.getPercentage())
+                .status("PENDING")
+                .attemptCount(0)
+                .assignedFreelancer(null)
+                .reassignmentReason(null)
+                .build();
+    }
+
+    private Milestone buildMilestoneFromConfirmedItem(UUID projectId, MilestoneItemRequest item) {
+        return Milestone.builder()
+                .projectId(projectId)
+                .title(item.getTitle())
+                .description(item.getDescription())
+                .amount(item.getAmount())
+                .percentage(item.getPercentage())
+                .status("PENDING")
+                .attemptCount(0)
+                .assignedFreelancer(null)
+                .reassignmentReason(null)
+                .build();
+    }
+
+    private MilestoneResponse mapGeneratedMilestonePreview(MilestoneGenerationItem item) {
+        return MilestoneResponse.builder()
+                .id(null)
+                .projectId(null)
+                .title(item.getTitle())
+                .description(item.getDescription())
+                .amount(item.getAmount())
+                .assignedFreelancer(null)
+                .status("PENDING")
+                .attemptCount(0)
+                .reassignmentReason(null)
+                .percentage(item.getPercentage())
+                .createdAt(null)
+                .build();
     }
 
     private Project getProjectOrThrow(UUID projectId) {
@@ -126,31 +496,17 @@ public class ProjectServiceImpl implements ProjectService {
                 .orElseThrow(() -> new BadRequestException("Project not found"));
     }
 
-    private UUID parseUuid(String value, String errorMessage) {
-        try {
-            return UUID.fromString(value);
-        } catch (Exception ex) {
-            throw new BadRequestException(errorMessage);
+    private void validateProjectOwnership(UUID userId, Project project) {
+        if (project.getClientId() == null || !project.getClientId().equals(userId)) {
+            throw new BadRequestException("Only project owner can perform this action");
         }
     }
 
-    private String toJson(List<String> techStack) {
+    private UUID parseUUID(String id) {
         try {
-            return objectMapper.writeValueAsString(techStack);
-        } catch (Exception ex) {
-            throw new BadRequestException("Failed to serialize tech stack");
-        }
-    }
-
-    private List<String> fromJson(String techStackJson) {
-        if (techStackJson == null || techStackJson.isBlank()) {
-            return Collections.emptyList();
-        }
-
-        try {
-            return objectMapper.readValue(techStackJson, new TypeReference<List<String>>() {});
-        } catch (Exception ex) {
-            throw new BadRequestException("Failed to parse tech stack");
+            return UUID.fromString(id);
+        } catch (Exception e) {
+            throw new BadRequestException("Invalid user ID");
         }
     }
 
@@ -160,12 +516,28 @@ public class ProjectServiceImpl implements ProjectService {
                 .clientId(project.getClientId())
                 .title(project.getTitle())
                 .description(project.getDescription())
-                .techStack(fromJson(project.getTechStack()))
+                .techStack(project.getTechStack())
                 .expectedOutcome(project.getExpectedOutcome())
                 .status(project.getStatus())
                 .appId(project.getAppId())
                 .totalAmount(project.getTotalAmount())
                 .createdAt(project.getCreatedAt())
+                .build();
+    }
+
+    private MilestoneResponse mapMilestoneToResponse(Milestone milestone) {
+        return MilestoneResponse.builder()
+                .id(milestone.getId())
+                .projectId(milestone.getProjectId())
+                .title(milestone.getTitle())
+                .description(milestone.getDescription())
+                .amount(milestone.getAmount())
+                .assignedFreelancer(milestone.getAssignedFreelancer())
+                .status(milestone.getStatus())
+                .attemptCount(milestone.getAttemptCount())
+                .reassignmentReason(milestone.getReassignmentReason())
+                .percentage(milestone.getPercentage())
+                .createdAt(milestone.getCreatedAt())
                 .build();
     }
 }

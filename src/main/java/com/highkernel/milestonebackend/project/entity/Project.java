@@ -10,9 +10,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -38,8 +41,9 @@ public class Project {
     @Column(name = "description")
     private String description;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "tech_stack", columnDefinition = "jsonb")
-    private String techStack;
+    private List<String> techStack;
 
     @Column(name = "expected_outcome")
     private String expectedOutcome;
