@@ -1,6 +1,7 @@
 package com.highkernel.milestonebackend.payment.controller;
 
 import com.highkernel.milestonebackend.auth.security.WalletPrincipal;
+import com.highkernel.milestonebackend.payment.dto.PaymentPrepareReleaseResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentReleaseRequest;
 import com.highkernel.milestonebackend.payment.dto.PaymentResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentStatusUpdateRequest;
@@ -20,16 +21,22 @@ public class PaymentController {
 
     private final PaymentService paymentService;
 
-    // 🔹 1. Release payment (Client → Freelancer)
-    @PostMapping("/release")
-    public PaymentResponse releasePayment(
+    @PostMapping("/release/prepare")
+    public PaymentPrepareReleaseResponse prepareReleasePayment(
             @AuthenticationPrincipal WalletPrincipal principal,
             @Valid @RequestBody PaymentReleaseRequest request
     ) {
-        return paymentService.releasePayment(principal.getUserId(), request);
+        return paymentService.prepareReleasePayment(principal.getUserId(), request);
     }
 
-    // 🔹 2. Update payment status
+    @PostMapping("/release/confirm")
+    public PaymentResponse confirmReleasePayment(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @Valid @RequestBody PaymentReleaseRequest request
+    ) {
+        return paymentService.confirmReleasePayment(principal.getUserId(), request);
+    }
+
     @PatchMapping("/{paymentId}/status")
     public PaymentResponse updatePaymentStatus(
             @AuthenticationPrincipal WalletPrincipal principal,
@@ -39,7 +46,6 @@ public class PaymentController {
         return paymentService.updatePaymentStatus(principal.getUserId(), paymentId, request);
     }
 
-    // 🔹 3. Get payments by milestone
     @GetMapping("/milestone/{milestoneId}")
     public List<PaymentResponse> getPaymentsByMilestone(
             @AuthenticationPrincipal WalletPrincipal principal,
@@ -48,7 +54,6 @@ public class PaymentController {
         return paymentService.getPaymentsByMilestone(principal.getUserId(), milestoneId);
     }
 
-    // 🔹 4. Get payments by freelancer
     @GetMapping("/freelancer/{freelancerId}")
     public List<PaymentResponse> getPaymentsByFreelancer(
             @AuthenticationPrincipal WalletPrincipal principal,
@@ -57,7 +62,6 @@ public class PaymentController {
         return paymentService.getPaymentsByFreelancer(principal.getUserId(), freelancerId);
     }
 
-    // 🔹 5. Get payments by project
     @GetMapping("/project/{projectId}")
     public List<PaymentResponse> getPaymentsByProject(
             @AuthenticationPrincipal WalletPrincipal principal,
@@ -66,7 +70,6 @@ public class PaymentController {
         return paymentService.getPaymentsByProject(principal.getUserId(), projectId);
     }
 
-    // 🔹 6. Get single payment
     @GetMapping("/{paymentId}")
     public PaymentResponse getPaymentById(
             @AuthenticationPrincipal WalletPrincipal principal,
@@ -75,7 +78,6 @@ public class PaymentController {
         return paymentService.getPaymentById(principal.getUserId(), paymentId);
     }
 
-    // 🔹 7. Get my payments (freelancer dashboard)
     @GetMapping("/me")
     public List<PaymentResponse> getMyPayments(
             @AuthenticationPrincipal WalletPrincipal principal

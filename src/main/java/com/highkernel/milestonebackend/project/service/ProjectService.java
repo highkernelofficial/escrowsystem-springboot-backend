@@ -4,6 +4,10 @@ import com.highkernel.milestonebackend.milestone.dto.MilestoneResponse;
 import com.highkernel.milestonebackend.project.dto.ConfirmProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.GeneratedMilestonesPreviewResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectDeployConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectDeployPrepareResponse;
+import com.highkernel.milestonebackend.project.dto.ProjectFundConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectWithMilestonesResponse;
@@ -20,6 +24,14 @@ public interface ProjectService {
     ProjectWithMilestonesResponse confirmCreateProject(String authenticatedUserId, ConfirmProjectCreateRequest request);
 
     ProjectWithMilestonesResponse createProjectWithGeneratedMilestones(String authenticatedUserId, ProjectCreateRequest request);
+
+    ProjectDeployPrepareResponse prepareDeployContract(String authenticatedUserId, UUID projectId);
+
+    ProjectResponse confirmDeployContract(String authenticatedUserId, ProjectDeployConfirmRequest request);
+
+    ProjectFundPrepareResponse prepareFundProject(String authenticatedUserId, UUID projectId);
+
+    ProjectResponse confirmFundProject(String authenticatedUserId, ProjectFundConfirmRequest request);
 
     List<ProjectResponse> getAllProjects();
 

@@ -1,5 +1,7 @@
 package com.highkernel.milestonebackend.submission.service;
 
+import com.highkernel.milestonebackend.submission.dto.ClientProjectMilestoneSubmissionResponse;
+import com.highkernel.milestonebackend.submission.dto.SubmissionAiEvaluationResponse;
 import com.highkernel.milestonebackend.submission.dto.SubmissionCreateRequest;
 import com.highkernel.milestonebackend.submission.dto.SubmissionResponse;
 import com.highkernel.milestonebackend.submission.dto.SubmissionStatusUpdateRequest;
@@ -21,4 +23,8 @@ public interface SubmissionService {
     SubmissionResponse updateSubmission(String authUserId, UUID submissionId, SubmissionUpdateRequest request);
 
     SubmissionResponse updateSubmissionStatus(String authUserId, UUID submissionId, SubmissionStatusUpdateRequest request);
+
+    List<ClientProjectMilestoneSubmissionResponse> getClientProjectMilestoneSubmissions(String authUserId, UUID projectId);
+
+    SubmissionAiEvaluationResponse evaluateSubmissionWithAi(String authUserId, UUID submissionId);
 }

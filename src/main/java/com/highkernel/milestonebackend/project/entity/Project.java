@@ -14,6 +14,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -55,7 +56,10 @@ public class Project {
     private Long appId;
 
     @Column(name = "total_amount")
-    private Long totalAmount;
+    private BigDecimal totalAmount;
+
+    @Column(name = "funding_txn_hash")
+    private String fundingTxnHash;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

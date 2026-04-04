@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -27,5 +28,5 @@ public class MilestoneGenerationRequest {
     private String expectedOutcome;
 
     @JsonProperty("total_budget")
-    private Long totalBudget;
+    private BigDecimal totalBudget;
 }

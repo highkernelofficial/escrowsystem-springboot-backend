@@ -17,6 +17,6 @@ public class MilestoneGenerationItem {
 
     private String title;
     private String description;
-    private Long amount;
+    private BigDecimal amount;
     private BigDecimal percentage;
 }

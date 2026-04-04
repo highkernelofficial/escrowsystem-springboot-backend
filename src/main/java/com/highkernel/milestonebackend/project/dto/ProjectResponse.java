@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -24,6 +25,6 @@ public class ProjectResponse {
     private String expectedOutcome;
     private String status;
     private Long appId;
-    private Long totalAmount;
+    private BigDecimal totalAmount;
     private OffsetDateTime createdAt;
 }

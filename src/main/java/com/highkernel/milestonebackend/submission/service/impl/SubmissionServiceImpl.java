@@ -1,10 +1,16 @@
 package com.highkernel.milestonebackend.submission.service.impl;
 
+import com.highkernel.milestonebackend.ai.client.AiEvaluationClient;
+import com.highkernel.milestonebackend.ai.dto.AiEvaluationRequest;
+import com.highkernel.milestonebackend.ai.dto.AiEvaluationResponse;
 import com.highkernel.milestonebackend.exception.BadRequestException;
 import com.highkernel.milestonebackend.milestone.entity.Milestone;
 import com.highkernel.milestonebackend.milestone.repository.MilestoneRepository;
 import com.highkernel.milestonebackend.project.entity.Project;
 import com.highkernel.milestonebackend.project.repository.ProjectRepository;
+import com.highkernel.milestonebackend.submission.dto.ClientProjectMilestoneSubmissionResponse;
+import com.highkernel.milestonebackend.submission.dto.ClientSubmissionResponse;
+import com.highkernel.milestonebackend.submission.dto.SubmissionAiEvaluationResponse;
 import com.highkernel.milestonebackend.submission.dto.SubmissionCreateRequest;
 import com.highkernel.milestonebackend.submission.dto.SubmissionResponse;
 import com.highkernel.milestonebackend.submission.dto.SubmissionStatusUpdateRequest;
@@ -15,9 +21,12 @@ import com.highkernel.milestonebackend.submission.service.SubmissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +38,7 @@ public class SubmissionServiceImpl implements SubmissionService {
     private final SubmissionRepository submissionRepository;
     private final MilestoneRepository milestoneRepository;
     private final ProjectRepository projectRepository;
+    private final AiEvaluationClient aiEvaluationClient;
 
     @Override
     public SubmissionResponse createSubmission(String authUserId, SubmissionCreateRequest request) {
@@ -45,7 +55,7 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .description(request.getDescription())
                 .aiScore(null)
                 .aiFeedback(null)
-                .aiRaw(null)
+                .aiApproval(null)
                 .status("SUBMITTED")
                 .build();
 
@@ -132,7 +142,7 @@ public class SubmissionServiceImpl implements SubmissionService {
         submission.setStatus("SUBMITTED");
         submission.setAiScore(null);
         submission.setAiFeedback(null);
-        submission.setAiRaw(null);
+        submission.setAiApproval(null);
 
         milestone.setStatus("SUBMITTED");
         milestoneRepository.save(milestone);
@@ -183,6 +193,102 @@ public class SubmissionServiceImpl implements SubmissionService {
         return mapToResponse(submissionRepository.save(submission));
     }
 
+    @Override
+    public List<ClientProjectMilestoneSubmissionResponse> getClientProjectMilestoneSubmissions(
+            String authUserId,
+            UUID projectId
+    ) {
+        UUID clientId = parseUUID(authUserId);
+
+        Project project = getProjectOrThrow(projectId);
+
+        if (!project.getClientId().equals(clientId)) {
+            throw new BadRequestException("Only project owner can view submissions for this project");
+        }
+
+        List<Milestone> milestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(projectId);
+
+        if (milestones.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<UUID> milestoneIds = milestones.stream()
+                .map(Milestone::getId)
+                .toList();
+
+        Map<UUID, List<ClientSubmissionResponse>> submissionsByMilestoneId =
+                submissionRepository.findByMilestoneIdInOrderByCreatedAtDesc(milestoneIds)
+                        .stream()
+                        .map(this::mapToClientSubmissionResponse)
+                        .collect(Collectors.groupingBy(ClientSubmissionResponse::getMilestoneId));
+
+        return milestones.stream()
+                .map(milestone -> ClientProjectMilestoneSubmissionResponse.builder()
+                        .milestoneId(milestone.getId())
+                        .projectId(milestone.getProjectId())
+                        .milestoneTitle(milestone.getTitle())
+                        .milestoneDescription(milestone.getDescription())
+                        .milestoneAmount(milestone.getAmount())
+                        .assignedFreelancer(milestone.getAssignedFreelancer())
+                        .milestoneStatus(milestone.getStatus())
+                        .attemptCount(milestone.getAttemptCount())
+                        .reassignmentReason(milestone.getReassignmentReason())
+                        .percentage(milestone.getPercentage())
+                        .milestoneCreatedAt(milestone.getCreatedAt())
+                        .submissions(submissionsByMilestoneId.getOrDefault(
+                                milestone.getId(),
+                                Collections.emptyList()
+                        ))
+                        .build())
+                .toList();
+    }
+
+    @Override
+    public SubmissionAiEvaluationResponse evaluateSubmissionWithAi(String authUserId, UUID submissionId) {
+        UUID clientId = parseUUID(authUserId);
+
+        Submission submission = getSubmissionOrThrow(submissionId);
+        Milestone currentMilestone = getMilestoneOrThrow(submission.getMilestoneId());
+        Project project = getProjectOrThrow(currentMilestone.getProjectId());
+
+        if (!project.getClientId().equals(clientId)) {
+            throw new BadRequestException("Only project owner can evaluate submission with AI");
+        }
+
+        List<Milestone> allProjectMilestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(project.getId());
+
+        String requirementText = buildProjectContextOneLine(project, allProjectMilestones, currentMilestone);
+        String submissionText = buildSubmissionContextOneLine(submission);
+
+        AiEvaluationRequest aiRequest = AiEvaluationRequest.builder()
+                .requirement(requirementText)
+                .submission(submissionText)
+                .build();
+
+        AiEvaluationResponse aiResponse = aiEvaluationClient.evaluateSubmission(aiRequest);
+
+        String approvalText = aiResponse.getApproved() == null
+                ? null
+                : String.valueOf(aiResponse.getApproved());
+
+        submission.setAiScore(aiResponse.getScore());
+        submission.setAiFeedback(aiResponse.getFeedback());
+        submission.setAiApproval(approvalText);
+
+        Submission savedSubmission = submissionRepository.save(submission);
+
+        return SubmissionAiEvaluationResponse.builder()
+                .submissionId(savedSubmission.getId())
+                .milestoneId(currentMilestone.getId())
+                .projectId(project.getId())
+                .aiScore(savedSubmission.getAiScore())
+                .approved(aiResponse.getApproved())
+                .aiFeedback(savedSubmission.getAiFeedback())
+                .aiApproval(savedSubmission.getAiApproval())
+                .submissionStatus(savedSubmission.getStatus())
+                .build();
+    }
+
     private void validateAssignedFreelancer(Milestone milestone, UUID freelancerId) {
         if (milestone.getAssignedFreelancer() == null) {
             throw new BadRequestException("No freelancer assigned to this milestone");
@@ -217,10 +323,6 @@ public class SubmissionServiceImpl implements SubmissionService {
     }
 
     private SubmissionResponse mapToResponse(Submission submission) {
-        String aiRawString = submission.getAiRaw() != null
-                ? submission.getAiRaw().toString()
-                : null;
-
         return SubmissionResponse.builder()
                 .id(submission.getId())
                 .milestoneId(submission.getMilestoneId())
@@ -230,9 +332,96 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .description(submission.getDescription())
                 .aiScore(submission.getAiScore())
                 .aiFeedback(submission.getAiFeedback())
-                .aiRaw(aiRawString)
+                .aiApproval(submission.getAiApproval())
                 .status(submission.getStatus())
                 .createdAt(submission.getCreatedAt())
                 .build();
+    }
+
+    private ClientSubmissionResponse mapToClientSubmissionResponse(Submission submission) {
+        return ClientSubmissionResponse.builder()
+                .id(submission.getId())
+                .milestoneId(submission.getMilestoneId())
+                .freelancerId(submission.getFreelancerId())
+                .githubLink(submission.getGithubLink())
+                .demoLink(submission.getDemoLink())
+                .description(submission.getDescription())
+                .status(submission.getStatus())
+                .createdAt(submission.getCreatedAt())
+                .build();
+    }
+
+    private String buildProjectContextOneLine(Project project, List<Milestone> allMilestones, Milestone currentMilestone) {
+        String techStackText = project.getTechStack() == null || project.getTechStack().isEmpty()
+                ? "N/A"
+                : String.join(", ", project.getTechStack());
+
+        String milestonesText = allMilestones.stream()
+                .map(m -> String.format(
+                        "[milestone_id=%s, title=%s, description=%s, amount=%s, percentage=%s, assigned_freelancer=%s, status=%s]",
+                        safe(m.getId()),
+                        safe(m.getTitle()),
+                        safe(m.getDescription()),
+                        safe(m.getAmount()),
+                        safe(m.getPercentage()),
+                        safe(m.getAssignedFreelancer()),
+                        safe(m.getStatus())
+                ))
+                .collect(Collectors.joining(" | "));
+
+        String context = String.format(
+                "project_id=%s ; client_id=%s ; title=%s ; description=%s ; tech_stack=%s ; expected_outcome=%s ; project_status=%s ; app_id=%s ; total_amount=%s ; funding_txn_hash=%s ; current_milestone_id=%s ; current_milestone_title=%s ; current_milestone_description=%s ; current_milestone_amount=%s ; current_milestone_percentage=%s ; current_milestone_status=%s ; all_project_milestones=%s",
+                safe(project.getId()),
+                safe(project.getClientId()),
+                safe(project.getTitle()),
+                safe(project.getDescription()),
+                safe(techStackText),
+                safe(project.getExpectedOutcome()),
+                safe(project.getStatus()),
+                safe(project.getAppId()),
+                safe(project.getTotalAmount()),
+                safe(project.getFundingTxnHash()),
+                safe(currentMilestone.getId()),
+                safe(currentMilestone.getTitle()),
+                safe(currentMilestone.getDescription()),
+                safe(currentMilestone.getAmount()),
+                safe(currentMilestone.getPercentage()),
+                safe(currentMilestone.getStatus()),
+                safe(milestonesText)
+        );
+
+        return normalizeToOneLine(context);
+    }
+
+    private String buildSubmissionContextOneLine(Submission submission) {
+        String context = String.format(
+                "submission_id=%s ; milestone_id=%s ; freelancer_id=%s ; github_link=%s ; demo_link=%s ; description=%s ; submission_status=%s ; created_at=%s",
+                safe(submission.getId()),
+                safe(submission.getMilestoneId()),
+                safe(submission.getFreelancerId()),
+                safe(submission.getGithubLink()),
+                safe(submission.getDemoLink()),
+                safe(submission.getDescription()),
+                safe(submission.getStatus()),
+                safe(submission.getCreatedAt())
+        );
+
+        return normalizeToOneLine(context);
+    }
+
+    private String normalizeToOneLine(Object value) {
+        if (value == null) {
+            return "N/A";
+        }
+        return value.toString()
+                .replace("\n", " ")
+                .replace("\r", " ")
+                .replace("\t", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private String safe(Object value) {
+        return value == null ? "N/A" : normalizeToOneLine(value);
     }
 }

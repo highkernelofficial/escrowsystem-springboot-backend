@@ -2,19 +2,17 @@ package com.highkernel.milestonebackend.submission.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-@Getter
-@Setter
+@Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class SubmissionResponse {
+public class ClientSubmissionResponse {
 
     private UUID id;
     private UUID milestoneId;
@@ -22,9 +20,6 @@ public class SubmissionResponse {
     private String githubLink;
     private String demoLink;
     private String description;
-    private Integer aiScore;
-    private String aiFeedback;
-    private String aiApproval;
     private String status;
     private OffsetDateTime createdAt;
 }

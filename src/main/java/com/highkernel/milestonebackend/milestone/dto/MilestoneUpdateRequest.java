@@ -16,7 +16,7 @@ public class MilestoneUpdateRequest {
 
     private String title;
     private String description;
-    private Long amount;
+    private BigDecimal amount;
     private UUID assignedFreelancer;
     private String status;
     private Integer attemptCount;

@@ -1,5 +1,6 @@
 package com.highkernel.milestonebackend.payment.service;
 
+import com.highkernel.milestonebackend.payment.dto.PaymentPrepareReleaseResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentReleaseRequest;
 import com.highkernel.milestonebackend.payment.dto.PaymentResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentStatusUpdateRequest;
@@ -9,7 +10,9 @@ import java.util.UUID;
 
 public interface PaymentService {
 
-    PaymentResponse releasePayment(String authUserId, PaymentReleaseRequest request);
+    PaymentPrepareReleaseResponse prepareReleasePayment(String authUserId, PaymentReleaseRequest request);
+
+    PaymentResponse confirmReleasePayment(String authUserId, PaymentReleaseRequest request);
 
     PaymentResponse updatePaymentStatus(String authUserId, UUID paymentId, PaymentStatusUpdateRequest request);
 

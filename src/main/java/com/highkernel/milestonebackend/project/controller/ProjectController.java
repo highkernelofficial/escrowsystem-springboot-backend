@@ -6,6 +6,10 @@ import com.highkernel.milestonebackend.project.dto.ConfirmProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.GenerateMilestonesRequest;
 import com.highkernel.milestonebackend.project.dto.GeneratedMilestonesPreviewResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectDeployConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectDeployPrepareResponse;
+import com.highkernel.milestonebackend.project.dto.ProjectFundConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectWithMilestonesResponse;
@@ -31,6 +35,38 @@ public class ProjectController {
             @Valid @RequestBody ProjectCreateRequest request
     ) {
         return projectService.createProject(principal.getUserId(), request);
+    }
+
+    @PostMapping("/{projectId}/deploy-contract/prepare")
+    public ProjectDeployPrepareResponse prepareDeployContract(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @PathVariable UUID projectId
+    ) {
+        return projectService.prepareDeployContract(principal.getUserId(), projectId);
+    }
+
+    @PostMapping("/deploy-contract/confirm")
+    public ProjectResponse confirmDeployContract(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @Valid @RequestBody ProjectDeployConfirmRequest request
+    ) {
+        return projectService.confirmDeployContract(principal.getUserId(), request);
+    }
+
+    @PostMapping("/{projectId}/fund/prepare")
+    public ProjectFundPrepareResponse prepareFundProject(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @PathVariable UUID projectId
+    ) {
+        return projectService.prepareFundProject(principal.getUserId(), projectId);
+    }
+
+    @PostMapping("/fund/confirm")
+    public ProjectResponse confirmFundProject(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @Valid @RequestBody ProjectFundConfirmRequest request
+    ) {
+        return projectService.confirmFundProject(principal.getUserId(), request);
     }
 
     @PostMapping("/generate-milestones-preview")

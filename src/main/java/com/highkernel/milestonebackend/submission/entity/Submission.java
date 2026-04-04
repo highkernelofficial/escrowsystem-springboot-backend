@@ -1,6 +1,5 @@
 package com.highkernel.milestonebackend.submission.entity;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -11,10 +10,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
 
-import java.sql.Types;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -51,10 +48,8 @@ public class Submission {
     @Column(name = "ai_feedback")
     private String aiFeedback;
 
-    // 🔥 FIX: jsonb mapping
-    @JdbcTypeCode(Types.OTHER)
-    @Column(name = "ai_raw", columnDefinition = "jsonb")
-    private JsonNode aiRaw;
+    @Column(name = "ai_approval")
+    private String aiApproval;
 
     private String status;
 

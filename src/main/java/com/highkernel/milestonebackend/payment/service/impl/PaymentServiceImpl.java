@@ -1,8 +1,12 @@
 package com.highkernel.milestonebackend.payment.service.impl;
 
+import com.highkernel.milestonebackend.blockchain.client.BlockchainClient;
+import com.highkernel.milestonebackend.blockchain.dto.BlockchainTxnResponse;
+import com.highkernel.milestonebackend.blockchain.dto.ReleaseMilestoneTxnRequest;
 import com.highkernel.milestonebackend.exception.BadRequestException;
 import com.highkernel.milestonebackend.milestone.entity.Milestone;
 import com.highkernel.milestonebackend.milestone.repository.MilestoneRepository;
+import com.highkernel.milestonebackend.payment.dto.PaymentPrepareReleaseResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentReleaseRequest;
 import com.highkernel.milestonebackend.payment.dto.PaymentResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentStatusUpdateRequest;
@@ -11,10 +15,11 @@ import com.highkernel.milestonebackend.payment.repository.PaymentRepository;
 import com.highkernel.milestonebackend.payment.service.PaymentService;
 import com.highkernel.milestonebackend.project.entity.Project;
 import com.highkernel.milestonebackend.project.repository.ProjectRepository;
+import com.highkernel.milestonebackend.user.entity.User;
+import com.highkernel.milestonebackend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -30,12 +35,19 @@ public class PaymentServiceImpl implements PaymentService {
             "RELEASED"
     );
 
+    private static final Set<String> FINALIZED_PAYMENT_STATUSES = Set.of(
+            "SUCCESS",
+            "RELEASED"
+    );
+
     private final PaymentRepository paymentRepository;
     private final MilestoneRepository milestoneRepository;
     private final ProjectRepository projectRepository;
+    private final UserRepository userRepository;
+    private final BlockchainClient blockchainClient;
 
     @Override
-    public PaymentResponse releasePayment(String authUserId, PaymentReleaseRequest request) {
+    public PaymentPrepareReleaseResponse prepareReleasePayment(String authUserId, PaymentReleaseRequest request) {
         UUID userId = parseUUID(authUserId);
 
         if (request == null || request.getMilestoneId() == null) {
@@ -45,23 +57,65 @@ public class PaymentServiceImpl implements PaymentService {
         Milestone milestone = getMilestoneOrThrow(request.getMilestoneId());
         Project project = getProjectOrThrow(milestone.getProjectId());
 
-        if (project.getClientId() == null || !project.getClientId().equals(userId)) {
-            throw new BadRequestException("Only project owner can release payment");
+        validateClientOwnership(project, userId);
+        validateProjectFunded(project);
+        validateMilestoneReadyForRelease(milestone);
+
+        if (paymentRepository.existsByMilestoneIdAndStatusIn(milestone.getId(), FINALIZED_PAYMENT_STATUSES)) {
+            throw new BadRequestException("Payment already released for this milestone");
         }
 
-        if (milestone.getAssignedFreelancer() == null) {
-            throw new BadRequestException("Milestone has no assigned freelancer");
+        User freelancer = getUserOrThrow(milestone.getAssignedFreelancer());
+
+        BlockchainTxnResponse blockchainResponse = blockchainClient.prepareReleaseMilestoneTxn(
+                ReleaseMilestoneTxnRequest.builder()
+                        .sender(getWalletAddressOrThrow(userId))
+                        .appId(project.getAppId())
+                        .milestoneId(milestone.getId().toString())
+                        .freelancerAddress(freelancer.getWalletAddress())
+                        .amount(milestone.getAmount())
+                        .build()
+        );
+
+        return PaymentPrepareReleaseResponse.builder()
+                .projectId(project.getId())
+                .milestoneId(milestone.getId())
+                .freelancerId(milestone.getAssignedFreelancer())
+                .appId(project.getAppId())
+                .amount(milestone.getAmount())
+                .unsignedTxn(blockchainResponse.getTxn())
+                .message("Unsigned release transaction prepared successfully")
+                .build();
+    }
+
+    @Override
+    public PaymentResponse confirmReleasePayment(String authUserId, PaymentReleaseRequest request) {
+        UUID userId = parseUUID(authUserId);
+
+        if (request == null || request.getMilestoneId() == null) {
+            throw new BadRequestException("Milestone ID is required");
         }
 
-        if (!"APPROVED".equalsIgnoreCase(milestone.getStatus())) {
-            throw new BadRequestException("Milestone must be APPROVED before payment release");
+        if (request.getTxnHash() == null || request.getTxnHash().isBlank()) {
+            throw new BadRequestException("txnHash is required after blockchain submission");
+        }
+
+        Milestone milestone = getMilestoneOrThrow(request.getMilestoneId());
+        Project project = getProjectOrThrow(milestone.getProjectId());
+
+        validateClientOwnership(project, userId);
+        validateProjectFunded(project);
+        validateMilestoneReadyForRelease(milestone);
+
+        if (paymentRepository.existsByMilestoneIdAndStatusIn(milestone.getId(), FINALIZED_PAYMENT_STATUSES)) {
+            throw new BadRequestException("Payment already released for this milestone");
         }
 
         Payment payment = Payment.builder()
                 .milestoneId(milestone.getId())
                 .freelancerId(milestone.getAssignedFreelancer())
-                .amount(BigDecimal.valueOf(milestone.getAmount()))
-                .txnHash(request.getTxnHash())
+                .amount(milestone.getAmount())
+                .txnHash(request.getTxnHash().trim())
                 .status("RELEASED")
                 .build();
 
@@ -193,6 +247,37 @@ public class PaymentServiceImpl implements PaymentService {
                 .toList();
     }
 
+    private void validateClientOwnership(Project project, UUID userId) {
+        if (project.getClientId() == null || !project.getClientId().equals(userId)) {
+            throw new BadRequestException("Only project owner can release payment");
+        }
+    }
+
+    private void validateProjectFunded(Project project) {
+        if (project.getAppId() == null) {
+            throw new BadRequestException("Project app_id is missing");
+        }
+
+        if (project.getStatus() == null || !"FUNDED".equalsIgnoreCase(project.getStatus())) {
+            throw new BadRequestException("Project is not funded yet");
+        }
+    }
+
+    private void validateMilestoneReadyForRelease(Milestone milestone) {
+        if (milestone.getAssignedFreelancer() == null) {
+            throw new BadRequestException("Milestone is not assigned to any freelancer");
+        }
+
+        if (milestone.getStatus() == null || !"APPROVED".equalsIgnoreCase(milestone.getStatus())) {
+            throw new BadRequestException("Only APPROVED milestone payment can be released");
+        }
+    }
+
+    private Payment getPaymentOrThrow(UUID paymentId) {
+        return paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new BadRequestException("Payment not found"));
+    }
+
     private Milestone getMilestoneOrThrow(UUID milestoneId) {
         return milestoneRepository.findById(milestoneId)
                 .orElseThrow(() -> new BadRequestException("Milestone not found"));
@@ -203,9 +288,19 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new BadRequestException("Project not found"));
     }
 
-    private Payment getPaymentOrThrow(UUID paymentId) {
-        return paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new BadRequestException("Payment not found"));
+    private User getUserOrThrow(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+    }
+
+    private String getWalletAddressOrThrow(UUID userId) {
+        User user = getUserOrThrow(userId);
+
+        if (user.getWalletAddress() == null || user.getWalletAddress().isBlank()) {
+            throw new BadRequestException("Wallet address not found");
+        }
+
+        return user.getWalletAddress();
     }
 
     private UUID parseUUID(String id) {

@@ -11,6 +11,8 @@ public interface SubmissionRepository extends JpaRepository<Submission, UUID> {
 
     List<Submission> findByMilestoneIdOrderByCreatedAtDesc(UUID milestoneId);
 
+    List<Submission> findByMilestoneIdInOrderByCreatedAtDesc(List<UUID> milestoneIds);
+
     List<Submission> findByFreelancerIdOrderByCreatedAtDesc(UUID freelancerId);
 
     Optional<Submission> findTopByMilestoneIdAndFreelancerIdOrderByCreatedAtDesc(UUID milestoneId, UUID freelancerId);

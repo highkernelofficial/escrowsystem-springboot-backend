@@ -35,28 +35,32 @@ public class DisputeServiceImpl implements DisputeService {
 
     @Override
     public DisputeResponse createDispute(String authUserId, DisputeCreateRequest request) {
-        UUID freelancerId = parseUUID(authUserId);
+        UUID clientId = parseUUID(authUserId);
 
         if (request == null || request.getMilestoneId() == null) {
             throw new BadRequestException("Milestone ID is required");
         }
 
+        if (request.getReason() == null || request.getReason().isBlank()) {
+            throw new BadRequestException("Dispute reason is required");
+        }
+
         Milestone milestone = getMilestoneOrThrow(request.getMilestoneId());
         Project project = getProjectOrThrow(milestone.getProjectId());
 
-        if (milestone.getAssignedFreelancer() == null || !milestone.getAssignedFreelancer().equals(freelancerId)) {
-            throw new BadRequestException("Only assigned freelancer can raise dispute");
+        if (project.getClientId() == null || !project.getClientId().equals(clientId)) {
+            throw new BadRequestException("Only project owner can raise dispute");
         }
 
-        if (project.getClientId() == null) {
-            throw new BadRequestException("Project client not found");
+        if (milestone.getAssignedFreelancer() == null) {
+            throw new BadRequestException("No freelancer assigned to this milestone");
         }
 
         Dispute dispute = Dispute.builder()
                 .milestoneId(request.getMilestoneId())
-                .clientId(project.getClientId())
-                .freelancerId(freelancerId)
-                .reason(request.getReason())
+                .clientId(clientId)
+                .freelancerId(milestone.getAssignedFreelancer())
+                .reason(request.getReason().trim())
                 .status("OPEN")
                 .build();
 

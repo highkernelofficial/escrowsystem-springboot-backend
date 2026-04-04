@@ -1,6 +1,8 @@
 package com.highkernel.milestonebackend.submission.controller;
 
 import com.highkernel.milestonebackend.auth.security.WalletPrincipal;
+import com.highkernel.milestonebackend.submission.dto.ClientProjectMilestoneSubmissionResponse;
+import com.highkernel.milestonebackend.submission.dto.SubmissionAiEvaluationResponse;
 import com.highkernel.milestonebackend.submission.dto.SubmissionCreateRequest;
 import com.highkernel.milestonebackend.submission.dto.SubmissionResponse;
 import com.highkernel.milestonebackend.submission.dto.SubmissionStatusUpdateRequest;
@@ -27,6 +29,14 @@ public class SubmissionController {
             @Valid @RequestBody SubmissionCreateRequest request
     ) {
         return submissionService.createSubmission(principal.getUserId(), request);
+    }
+
+    @GetMapping("/client/project/{projectId}")
+    public List<ClientProjectMilestoneSubmissionResponse> getClientProjectMilestoneSubmissions(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @PathVariable UUID projectId
+    ) {
+        return submissionService.getClientProjectMilestoneSubmissions(principal.getUserId(), projectId);
     }
 
     @GetMapping("/milestone/{milestoneId}")
@@ -68,5 +78,13 @@ public class SubmissionController {
             @Valid @RequestBody SubmissionStatusUpdateRequest request
     ) {
         return submissionService.updateSubmissionStatus(principal.getUserId(), id, request);
+    }
+
+    @PostMapping("/{submissionId}/evaluate-ai")
+    public SubmissionAiEvaluationResponse evaluateSubmissionWithAi(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @PathVariable UUID submissionId
+    ) {
+        return submissionService.evaluateSubmissionWithAi(principal.getUserId(), submissionId);
     }
 }

@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -37,7 +38,7 @@ public class ConfirmProjectCreateRequest {
     private Long appId;
 
     @NotNull(message = "Total amount is required")
-    private Long totalAmount;
+    private BigDecimal totalAmount;
 
     @Valid
     @NotEmpty(message = "Milestones are required")

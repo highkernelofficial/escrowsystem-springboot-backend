@@ -4,6 +4,12 @@ import com.highkernel.milestonebackend.ai.client.AiValidatorClient;
 import com.highkernel.milestonebackend.ai.dto.MilestoneGenerationItem;
 import com.highkernel.milestonebackend.ai.dto.MilestoneGenerationRequest;
 import com.highkernel.milestonebackend.ai.dto.MilestoneGenerationResponse;
+import com.highkernel.milestonebackend.blockchain.client.BlockchainClient;
+import com.highkernel.milestonebackend.blockchain.dto.BlockchainTxnResponse;
+import com.highkernel.milestonebackend.blockchain.dto.DeployContractRequest;
+import com.highkernel.milestonebackend.blockchain.dto.FundProjectTxnRequest;
+import com.highkernel.milestonebackend.blockchain.dto.GetAppIdRequest;
+import com.highkernel.milestonebackend.blockchain.dto.GetAppIdResponse;
 import com.highkernel.milestonebackend.exception.BadRequestException;
 import com.highkernel.milestonebackend.milestone.dto.MilestoneItemRequest;
 import com.highkernel.milestonebackend.milestone.dto.MilestoneResponse;
@@ -12,12 +18,18 @@ import com.highkernel.milestonebackend.milestone.repository.MilestoneRepository;
 import com.highkernel.milestonebackend.project.dto.ConfirmProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.GeneratedMilestonesPreviewResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectDeployConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectDeployPrepareResponse;
+import com.highkernel.milestonebackend.project.dto.ProjectFundConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectWithMilestonesResponse;
 import com.highkernel.milestonebackend.project.entity.Project;
 import com.highkernel.milestonebackend.project.repository.ProjectRepository;
 import com.highkernel.milestonebackend.project.service.ProjectService;
+import com.highkernel.milestonebackend.user.entity.User;
+import com.highkernel.milestonebackend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +47,8 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectRepository projectRepository;
     private final MilestoneRepository milestoneRepository;
     private final AiValidatorClient aiValidatorClient;
+    private final BlockchainClient blockchainClient;
+    private final UserRepository userRepository;
 
     @Override
     public ProjectResponse createProject(String authenticatedUserId, ProjectCreateRequest request) {
@@ -51,7 +65,8 @@ public class ProjectServiceImpl implements ProjectService {
                 .totalAmount(request.getTotalAmount())
                 .build();
 
-        return mapToResponse(projectRepository.save(project));
+        Project savedProject = projectRepository.save(project);
+        return mapToResponse(savedProject);
     }
 
     @Override
@@ -162,6 +177,125 @@ public class ProjectServiceImpl implements ProjectService {
                 .project(mapToResponse(savedProject))
                 .milestones(savedMilestones)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public ProjectDeployPrepareResponse prepareDeployContract(String authenticatedUserId, UUID projectId) {
+        UUID userId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(projectId);
+        validateProjectOwnership(userId, project);
+
+        if (project.getAppId() != null && project.getAppId() > 0) {
+            throw new BadRequestException("Project already has app_id. Contract is already deployed.");
+        }
+
+        User client = getUserOrThrow(userId);
+
+        if (client.getWalletAddress() == null || client.getWalletAddress().isBlank()) {
+            throw new BadRequestException("Client wallet address not found");
+        }
+
+        BlockchainTxnResponse response = blockchainClient.prepareDeployContractTxn(
+                DeployContractRequest.builder()
+                        .sender(client.getWalletAddress())
+                        .build()
+        );
+
+        return ProjectDeployPrepareResponse.builder()
+                .projectId(project.getId())
+                .unsignedTxn(response.getTxn())
+                .message("Unsigned deploy-contract transaction prepared successfully")
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse confirmDeployContract(String authenticatedUserId, ProjectDeployConfirmRequest request) {
+        UUID userId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(request.getProjectId());
+        validateProjectOwnership(userId, project);
+
+        if (project.getAppId() != null && project.getAppId() > 0) {
+            throw new BadRequestException("Project already has app_id. Contract is already deployed.");
+        }
+
+        GetAppIdResponse appIdResponse = blockchainClient.getAppId(
+                GetAppIdRequest.builder()
+                        .txnId(request.getTxnId().trim())
+                        .build()
+        );
+
+        project.setAppId(appIdResponse.getAppId());
+
+        if (project.getStatus() == null || project.getStatus().isBlank() || "OPEN".equalsIgnoreCase(project.getStatus())) {
+            project.setStatus("CREATED");
+        }
+
+        return mapToResponse(projectRepository.save(project));
+    }
+
+    @Override
+    @Transactional
+    public ProjectFundPrepareResponse prepareFundProject(String authenticatedUserId, UUID projectId) {
+        UUID userId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(projectId);
+        validateProjectOwnership(userId, project);
+
+        if (project.getAppId() == null || project.getAppId() <= 0) {
+            throw new BadRequestException("Project app_id is missing. Deploy contract first.");
+        }
+
+        if ("FUNDED".equalsIgnoreCase(project.getStatus())) {
+            throw new BadRequestException("Project is already funded");
+        }
+
+        User client = getUserOrThrow(userId);
+
+        if (client.getWalletAddress() == null || client.getWalletAddress().isBlank()) {
+            throw new BadRequestException("Client wallet address not found");
+        }
+
+        BlockchainTxnResponse response = blockchainClient.prepareFundProjectTxn(
+                FundProjectTxnRequest.builder()
+                        .sender(client.getWalletAddress())
+                        .escrowAddress(String.valueOf(project.getAppId()))
+                        .amount(project.getTotalAmount())
+                        .build()
+        );
+
+        return ProjectFundPrepareResponse.builder()
+                .projectId(project.getId())
+                .appId(project.getAppId())
+                .totalAmount(project.getTotalAmount())
+                .unsignedTxn(response.getTxn())
+                .message("Unsigned funding transaction prepared successfully")
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse confirmFundProject(String authenticatedUserId, ProjectFundConfirmRequest request) {
+        UUID userId = parseUUID(authenticatedUserId);
+
+        Project project = getProjectOrThrow(request.getProjectId());
+        validateProjectOwnership(userId, project);
+
+        if (project.getAppId() == null || project.getAppId() <= 0) {
+            throw new BadRequestException("Project app_id is missing. Deploy contract first.");
+        }
+
+        if ("FUNDED".equalsIgnoreCase(project.getStatus())) {
+            throw new BadRequestException("Project already funded");
+        }
+
+        project.setFundingTxnHash(request.getTxnHash().trim());
+        project.setStatus("FUNDED");
+
+        return mapToResponse(projectRepository.save(project));
     }
 
     @Override
@@ -494,6 +628,11 @@ public class ProjectServiceImpl implements ProjectService {
     private Project getProjectOrThrow(UUID projectId) {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new BadRequestException("Project not found"));
+    }
+
+    private User getUserOrThrow(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BadRequestException("User not found"));
     }
 
     private void validateProjectOwnership(UUID userId, Project project) {

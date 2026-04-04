@@ -7,19 +7,17 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ProjectUpdateRequest {
-    private String title;
-    private String description;
-    private List<String> techStack;
-    private String expectedOutcome;
-    private String status;
+public class ProjectFundPrepareResponse {
+    private UUID projectId;
     private Long appId;
     private BigDecimal totalAmount;
+    private String unsignedTxn;
+    private String message;
 }

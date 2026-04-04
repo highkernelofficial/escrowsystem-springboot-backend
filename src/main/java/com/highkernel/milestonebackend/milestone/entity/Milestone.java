@@ -40,7 +40,7 @@ public class Milestone {
     private String description;
 
     @Column(name = "amount")
-    private Long amount;
+    private BigDecimal amount;
 
     @Column(name = "assigned_freelancer")
     private UUID assignedFreelancer;

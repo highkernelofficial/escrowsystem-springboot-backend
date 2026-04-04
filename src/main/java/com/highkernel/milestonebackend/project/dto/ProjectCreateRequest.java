@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -34,5 +35,5 @@ public class ProjectCreateRequest {
     private Long appId;
 
     @NotNull(message = "Total amount is required")
-    private Long totalAmount;
+    private BigDecimal totalAmount;
 }
