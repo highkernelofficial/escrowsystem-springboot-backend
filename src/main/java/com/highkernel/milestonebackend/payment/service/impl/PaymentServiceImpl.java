@@ -20,6 +20,7 @@ import com.highkernel.milestonebackend.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -58,7 +59,7 @@ public class PaymentServiceImpl implements PaymentService {
         Project project = getProjectOrThrow(milestone.getProjectId());
 
         validateClientOwnership(project, userId);
-        validateProjectFunded(project);
+        validateProjectEligibleForRelease(project);
         validateMilestoneReadyForRelease(milestone);
 
         if (paymentRepository.existsByMilestoneIdAndStatusIn(milestone.getId(), FINALIZED_PAYMENT_STATUSES)) {
@@ -66,6 +67,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         User freelancer = getUserOrThrow(milestone.getAssignedFreelancer());
+
+        if (freelancer.getWalletAddress() == null || freelancer.getWalletAddress().isBlank()) {
+            throw new BadRequestException("Freelancer wallet address not found");
+        }
 
         BlockchainTxnResponse blockchainResponse = blockchainClient.prepareReleaseMilestoneTxn(
                 ReleaseMilestoneTxnRequest.builder()
@@ -104,7 +109,7 @@ public class PaymentServiceImpl implements PaymentService {
         Project project = getProjectOrThrow(milestone.getProjectId());
 
         validateClientOwnership(project, userId);
-        validateProjectFunded(project);
+        validateProjectEligibleForRelease(project);
         validateMilestoneReadyForRelease(milestone);
 
         if (paymentRepository.existsByMilestoneIdAndStatusIn(milestone.getId(), FINALIZED_PAYMENT_STATUSES)) {
@@ -253,12 +258,18 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-    private void validateProjectFunded(Project project) {
-        if (project.getAppId() == null) {
+    private void validateProjectEligibleForRelease(Project project) {
+        if (project.getAppId() == null || project.getAppId() <= 0) {
             throw new BadRequestException("Project app_id is missing");
         }
 
-        if (project.getStatus() == null || !"FUNDED".equalsIgnoreCase(project.getStatus())) {
+        if (project.getStatus() == null || project.getStatus().isBlank()) {
+            throw new BadRequestException("Project is not funded yet");
+        }
+
+        String normalizedStatus = project.getStatus().trim().toUpperCase();
+
+        if (!"FUNDED".equals(normalizedStatus) && !"ASSIGNED".equals(normalizedStatus)) {
             throw new BadRequestException("Project is not funded yet");
         }
     }
@@ -268,8 +279,22 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException("Milestone is not assigned to any freelancer");
         }
 
-        if (milestone.getStatus() == null || !"APPROVED".equalsIgnoreCase(milestone.getStatus())) {
-            throw new BadRequestException("Only APPROVED milestone payment can be released");
+        if (milestone.getAmount() == null) {
+            throw new BadRequestException("Milestone amount is missing");
+        }
+
+        if (milestone.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Milestone amount must be greater than zero");
+        }
+
+        if (milestone.getStatus() == null || milestone.getStatus().isBlank()) {
+            throw new BadRequestException("Only APPROVED or SUBMITTED milestone payment can be released");
+        }
+
+        String normalizedStatus = milestone.getStatus().trim().toUpperCase();
+
+        if (!"APPROVED".equals(normalizedStatus) && !"SUBMITTED".equals(normalizedStatus)) {
+            throw new BadRequestException("Only APPROVED or SUBMITTED milestone payment can be released");
         }
     }
 

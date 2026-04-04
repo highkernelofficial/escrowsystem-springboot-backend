@@ -255,9 +255,7 @@ public class SubmissionServiceImpl implements SubmissionService {
             throw new BadRequestException("Only project owner can evaluate submission with AI");
         }
 
-        List<Milestone> allProjectMilestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(project.getId());
-
-        String requirementText = buildProjectContextOneLine(project, allProjectMilestones, currentMilestone);
+        String requirementText = buildProjectContextOneLine(project, currentMilestone);
         String submissionText = buildSubmissionContextOneLine(submission);
 
         AiEvaluationRequest aiRequest = AiEvaluationRequest.builder()
@@ -351,60 +349,36 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .build();
     }
 
-    private String buildProjectContextOneLine(Project project, List<Milestone> allMilestones, Milestone currentMilestone) {
-        String techStackText = project.getTechStack() == null || project.getTechStack().isEmpty()
-                ? "N/A"
-                : String.join(", ", project.getTechStack());
-
-        String milestonesText = allMilestones.stream()
-                .map(m -> String.format(
-                        "[milestone_id=%s, title=%s, description=%s, amount=%s, percentage=%s, assigned_freelancer=%s, status=%s]",
-                        safe(m.getId()),
-                        safe(m.getTitle()),
-                        safe(m.getDescription()),
-                        safe(m.getAmount()),
-                        safe(m.getPercentage()),
-                        safe(m.getAssignedFreelancer()),
-                        safe(m.getStatus())
-                ))
-                .collect(Collectors.joining(" | "));
-
+    private String buildProjectContextOneLine(Project project, Milestone currentMilestone) {
         String context = String.format(
-                "project_id=%s ; client_id=%s ; title=%s ; description=%s ; tech_stack=%s ; expected_outcome=%s ; project_status=%s ; app_id=%s ; total_amount=%s ; funding_txn_hash=%s ; current_milestone_id=%s ; current_milestone_title=%s ; current_milestone_description=%s ; current_milestone_amount=%s ; current_milestone_percentage=%s ; current_milestone_status=%s ; all_project_milestones=%s",
-                safe(project.getId()),
-                safe(project.getClientId()),
+                "project_title=%s ; expected_outcome=%s ; milestone_title=%s ; milestone_description=%s ; milestone_amount=%s",
                 safe(project.getTitle()),
-                safe(project.getDescription()),
-                safe(techStackText),
                 safe(project.getExpectedOutcome()),
-                safe(project.getStatus()),
-                safe(project.getAppId()),
-                safe(project.getTotalAmount()),
-                safe(project.getFundingTxnHash()),
-                safe(currentMilestone.getId()),
                 safe(currentMilestone.getTitle()),
                 safe(currentMilestone.getDescription()),
-                safe(currentMilestone.getAmount()),
-                safe(currentMilestone.getPercentage()),
-                safe(currentMilestone.getStatus()),
-                safe(milestonesText)
+                safe(currentMilestone.getAmount())
         );
 
         return normalizeToOneLine(context);
     }
 
     private String buildSubmissionContextOneLine(Submission submission) {
-        String context = String.format(
-                "submission_id=%s ; milestone_id=%s ; freelancer_id=%s ; github_link=%s ; demo_link=%s ; description=%s ; submission_status=%s ; created_at=%s",
-                safe(submission.getId()),
-                safe(submission.getMilestoneId()),
-                safe(submission.getFreelancerId()),
-                safe(submission.getGithubLink()),
-                safe(submission.getDemoLink()),
-                safe(submission.getDescription()),
-                safe(submission.getStatus()),
-                safe(submission.getCreatedAt())
-        );
+        String githubLink = safe(submission.getGithubLink());
+        String demoLink = safe(submission.getDemoLink());
+
+        String context;
+        if ("N/A".equals(demoLink)) {
+            context = String.format(
+                    "github_link=%s",
+                    githubLink
+            );
+        } else {
+            context = String.format(
+                    "github_link=%s ; demo_link=%s",
+                    githubLink,
+                    demoLink
+            );
+        }
 
         return normalizeToOneLine(context);
     }
