@@ -1,6 +1,7 @@
 package com.highkernel.milestonebackend.payment.controller;
 
 import com.highkernel.milestonebackend.auth.security.WalletPrincipal;
+import com.highkernel.milestonebackend.exception.BadRequestException;
 import com.highkernel.milestonebackend.payment.dto.PaymentPrepareReleaseResponse;
 import com.highkernel.milestonebackend.payment.dto.PaymentReleaseRequest;
 import com.highkernel.milestonebackend.payment.dto.PaymentResponse;
@@ -32,8 +33,23 @@ public class PaymentController {
     @PostMapping("/release/confirm")
     public PaymentResponse confirmReleasePayment(
             @AuthenticationPrincipal WalletPrincipal principal,
-            @Valid @RequestBody PaymentReleaseRequest request
+            @RequestBody(required = false) PaymentReleaseRequest bodyRequest,
+            @RequestParam(value = "milestoneId", required = false) UUID milestoneId,
+            @RequestParam(value = "txnHash", required = false) String txnHash
     ) {
+        PaymentReleaseRequest request = bodyRequest;
+
+        if (request == null) {
+            if (milestoneId == null || txnHash == null || txnHash.isBlank()) {
+                throw new BadRequestException("milestoneId and txnHash are required");
+            }
+
+            request = PaymentReleaseRequest.builder()
+                    .milestoneId(milestoneId)
+                    .txnHash(txnHash)
+                    .build();
+        }
+
         return paymentService.confirmReleasePayment(principal.getUserId(), request);
     }
 

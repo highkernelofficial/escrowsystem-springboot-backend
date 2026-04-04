@@ -30,7 +30,9 @@ import com.highkernel.milestonebackend.project.repository.ProjectRepository;
 import com.highkernel.milestonebackend.project.service.ProjectService;
 import com.highkernel.milestonebackend.user.entity.User;
 import com.highkernel.milestonebackend.user.repository.UserRepository;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,20 @@ public class ProjectServiceImpl implements ProjectService {
     private final AiValidatorClient aiValidatorClient;
     private final BlockchainClient blockchainClient;
     private final UserRepository userRepository;
+
+    @Value("${spring.datasource.url:NOT_FOUND}")
+    private String datasourceUrl;
+
+    @Value("${spring.datasource.username:NOT_FOUND}")
+    private String datasourceUsername;
+
+    @PostConstruct
+    public void debugDatasourceConfig() {
+        System.out.println("\n================ DATASOURCE DEBUG ================");
+        System.out.println("spring.datasource.url = " + datasourceUrl);
+        System.out.println("spring.datasource.username = " + datasourceUsername);
+        System.out.println("==================================================\n");
+    }
 
     @Override
     public ProjectResponse createProject(String authenticatedUserId, ProjectCreateRequest request) {
@@ -215,6 +231,14 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse confirmDeployContract(String authenticatedUserId, ProjectDeployConfirmRequest request) {
         UUID userId = parseUUID(authenticatedUserId);
 
+        if (request == null || request.getProjectId() == null) {
+            throw new BadRequestException("Project ID is required");
+        }
+
+        if (request.getTxnId() == null || request.getTxnId().isBlank()) {
+            throw new BadRequestException("txnId is required");
+        }
+
         Project project = getProjectOrThrow(request.getProjectId());
         validateProjectOwnership(userId, project);
 
@@ -227,6 +251,10 @@ public class ProjectServiceImpl implements ProjectService {
                         .txnId(request.getTxnId().trim())
                         .build()
         );
+
+        if (appIdResponse == null || appIdResponse.getAppId() == null || appIdResponse.getAppId() <= 0) {
+            throw new BadRequestException("Failed to fetch valid appId from blockchain transaction");
+        }
 
         project.setAppId(appIdResponse.getAppId());
 
@@ -281,6 +309,14 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse confirmFundProject(String authenticatedUserId, ProjectFundConfirmRequest request) {
         UUID userId = parseUUID(authenticatedUserId);
 
+        if (request == null || request.getProjectId() == null) {
+            throw new BadRequestException("Project ID is required");
+        }
+
+        if (request.getTxnHash() == null || request.getTxnHash().isBlank()) {
+            throw new BadRequestException("txnHash is required");
+        }
+
         Project project = getProjectOrThrow(request.getProjectId());
         validateProjectOwnership(userId, project);
 
@@ -291,17 +327,10 @@ public class ProjectServiceImpl implements ProjectService {
         if ("FUNDED".equalsIgnoreCase(project.getStatus())) {
             throw new BadRequestException("Project already funded");
         }
-        if (request.getTxnHash() == null || request.getTxnHash().isBlank()) {
-            throw new BadRequestException("txnHash is required");
-        }
 
         if (request.getTxnHash().startsWith("simulated_hash_")) {
             throw new BadRequestException("Simulated txnHash is not allowed. Please complete real wallet transaction.");
         }
-
-// existing code
-        project.setFundingTxnHash(request.getTxnHash().trim());
-        project.setStatus("FUNDED");
 
         project.setFundingTxnHash(request.getTxnHash().trim());
         project.setStatus("FUNDED");
@@ -671,6 +700,7 @@ public class ProjectServiceImpl implements ProjectService {
                 .status(project.getStatus())
                 .appId(project.getAppId())
                 .totalAmount(project.getTotalAmount())
+                .fundingTxnHash(project.getFundingTxnHash())
                 .createdAt(project.getCreatedAt())
                 .build();
     }

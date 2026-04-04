@@ -1,6 +1,7 @@
 package com.highkernel.milestonebackend.project.controller;
 
 import com.highkernel.milestonebackend.auth.security.WalletPrincipal;
+import com.highkernel.milestonebackend.exception.BadRequestException;
 import com.highkernel.milestonebackend.milestone.dto.MilestoneResponse;
 import com.highkernel.milestonebackend.project.dto.ConfirmProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.GenerateMilestonesRequest;
@@ -48,8 +49,23 @@ public class ProjectController {
     @PostMapping("/deploy-contract/confirm")
     public ProjectResponse confirmDeployContract(
             @AuthenticationPrincipal WalletPrincipal principal,
-            @Valid @RequestBody ProjectDeployConfirmRequest request
+            @RequestBody(required = false) ProjectDeployConfirmRequest bodyRequest,
+            @RequestParam(value = "projectId", required = false) UUID projectId,
+            @RequestParam(value = "txnId", required = false) String txnId
     ) {
+        ProjectDeployConfirmRequest request = bodyRequest;
+
+        if (request == null) {
+            if (projectId == null || txnId == null || txnId.isBlank()) {
+                throw new BadRequestException("projectId and txnId are required");
+            }
+
+            request = ProjectDeployConfirmRequest.builder()
+                    .projectId(projectId)
+                    .txnId(txnId)
+                    .build();
+        }
+
         return projectService.confirmDeployContract(principal.getUserId(), request);
     }
 
@@ -64,8 +80,23 @@ public class ProjectController {
     @PostMapping("/fund/confirm")
     public ProjectResponse confirmFundProject(
             @AuthenticationPrincipal WalletPrincipal principal,
-            @Valid @RequestBody ProjectFundConfirmRequest request
+            @RequestBody(required = false) ProjectFundConfirmRequest bodyRequest,
+            @RequestParam(value = "projectId", required = false) UUID projectId,
+            @RequestParam(value = "txnHash", required = false) String txnHash
     ) {
+        ProjectFundConfirmRequest request = bodyRequest;
+
+        if (request == null) {
+            if (projectId == null || txnHash == null || txnHash.isBlank()) {
+                throw new BadRequestException("projectId and txnHash are required");
+            }
+
+            request = ProjectFundConfirmRequest.builder()
+                    .projectId(projectId)
+                    .txnHash(txnHash)
+                    .build();
+        }
+
         return projectService.confirmFundProject(principal.getUserId(), request);
     }
 
