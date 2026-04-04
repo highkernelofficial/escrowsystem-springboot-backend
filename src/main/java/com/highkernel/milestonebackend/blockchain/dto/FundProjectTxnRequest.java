@@ -15,8 +15,8 @@ import java.math.BigDecimal;
 public class FundProjectTxnRequest {
     private String sender;
 
-    @JsonProperty("escrow_address")
-    private String escrowAddress;
+    @JsonProperty("app_id")
+    private Long appId;
 
     private BigDecimal amount;
 }

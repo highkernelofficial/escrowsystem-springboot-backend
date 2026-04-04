@@ -26,5 +26,6 @@ public class ProjectResponse {
     private String status;
     private Long appId;
     private BigDecimal totalAmount;
+    private String fundingTxnHash;
     private OffsetDateTime createdAt;
 }

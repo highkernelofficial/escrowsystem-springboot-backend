@@ -262,7 +262,7 @@ public class ProjectServiceImpl implements ProjectService {
         BlockchainTxnResponse response = blockchainClient.prepareFundProjectTxn(
                 FundProjectTxnRequest.builder()
                         .sender(client.getWalletAddress())
-                        .escrowAddress(String.valueOf(project.getAppId()))
+                        .appId(project.getAppId())
                         .amount(project.getTotalAmount())
                         .build()
         );
@@ -291,6 +291,17 @@ public class ProjectServiceImpl implements ProjectService {
         if ("FUNDED".equalsIgnoreCase(project.getStatus())) {
             throw new BadRequestException("Project already funded");
         }
+        if (request.getTxnHash() == null || request.getTxnHash().isBlank()) {
+            throw new BadRequestException("txnHash is required");
+        }
+
+        if (request.getTxnHash().startsWith("simulated_hash_")) {
+            throw new BadRequestException("Simulated txnHash is not allowed. Please complete real wallet transaction.");
+        }
+
+// existing code
+        project.setFundingTxnHash(request.getTxnHash().trim());
+        project.setStatus("FUNDED");
 
         project.setFundingTxnHash(request.getTxnHash().trim());
         project.setStatus("FUNDED");
