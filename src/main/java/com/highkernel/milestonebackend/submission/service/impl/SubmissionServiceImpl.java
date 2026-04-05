@@ -255,19 +255,16 @@ public class SubmissionServiceImpl implements SubmissionService {
             throw new BadRequestException("Only project owner can evaluate submission with AI");
         }
 
-        String requirementText = buildProjectContextOneLine(project, currentMilestone);
-        String submissionText = buildSubmissionContextOneLine(submission);
-
         AiEvaluationRequest aiRequest = AiEvaluationRequest.builder()
-                .requirement(requirementText)
-                .submission(submissionText)
+                .requirement(currentMilestone.getDescription())
+                .submission(submission.getGithubLink())
                 .build();
 
         AiEvaluationResponse aiResponse = aiEvaluationClient.evaluateSubmission(aiRequest);
 
         String approvalText = aiResponse.getApproved() == null
                 ? null
-                : String.valueOf(aiResponse.getApproved());
+                : (Boolean.TRUE.equals(aiResponse.getApproved()) ? "approved" : "rejected");
 
         submission.setAiScore(aiResponse.getScore());
         submission.setAiFeedback(aiResponse.getFeedback());
@@ -349,53 +346,4 @@ public class SubmissionServiceImpl implements SubmissionService {
                 .build();
     }
 
-    private String buildProjectContextOneLine(Project project, Milestone currentMilestone) {
-        String context = String.format(
-                "project_title=%s ; expected_outcome=%s ; milestone_title=%s ; milestone_description=%s ; milestone_amount=%s",
-                safe(project.getTitle()),
-                safe(project.getExpectedOutcome()),
-                safe(currentMilestone.getTitle()),
-                safe(currentMilestone.getDescription()),
-                safe(currentMilestone.getAmount())
-        );
-
-        return normalizeToOneLine(context);
-    }
-
-    private String buildSubmissionContextOneLine(Submission submission) {
-        String githubLink = safe(submission.getGithubLink());
-        String demoLink = safe(submission.getDemoLink());
-
-        String context;
-        if ("N/A".equals(demoLink)) {
-            context = String.format(
-                    "github_link=%s",
-                    githubLink
-            );
-        } else {
-            context = String.format(
-                    "github_link=%s ; demo_link=%s",
-                    githubLink,
-                    demoLink
-            );
-        }
-
-        return normalizeToOneLine(context);
-    }
-
-    private String normalizeToOneLine(Object value) {
-        if (value == null) {
-            return "N/A";
-        }
-        return value.toString()
-                .replace("\n", " ")
-                .replace("\r", " ")
-                .replace("\t", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-    }
-
-    private String safe(Object value) {
-        return value == null ? "N/A" : normalizeToOneLine(value);
-    }
 }

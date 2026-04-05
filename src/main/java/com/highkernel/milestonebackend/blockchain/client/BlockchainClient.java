@@ -10,6 +10,8 @@ import com.highkernel.milestonebackend.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
 @Component
@@ -45,6 +47,12 @@ public class BlockchainClient {
                 throw new BadRequestException("FastAPI returned empty app_id");
             }
             return response;
+        } catch (HttpClientErrorException e) {
+            throw new BadRequestException("Failed to fetch app_id from FastAPI [" + e.getStatusCode() + "]: " + e.getResponseBodyAsString());
+        } catch (HttpServerErrorException e) {
+            throw new BadRequestException("FastAPI server error while fetching app_id [" + e.getStatusCode() + "]: " + e.getResponseBodyAsString());
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             throw new BadRequestException("Failed to fetch app_id from FastAPI: " + e.getMessage());
         }
@@ -75,6 +83,10 @@ public class BlockchainClient {
             }
 
             return response;
+        } catch (HttpClientErrorException e) {
+            throw new BadRequestException("Failed to " + action + " via FastAPI [" + e.getStatusCode() + "]: " + e.getResponseBodyAsString());
+        } catch (HttpServerErrorException e) {
+            throw new BadRequestException("FastAPI server error during " + action + " [" + e.getStatusCode() + "]: " + e.getResponseBodyAsString());
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
