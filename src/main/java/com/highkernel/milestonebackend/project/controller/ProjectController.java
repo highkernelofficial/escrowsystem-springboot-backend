@@ -10,6 +10,7 @@ import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectDeployConfirmRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectDeployPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectFundConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
@@ -72,9 +73,23 @@ public class ProjectController {
     @PostMapping("/{projectId}/fund/prepare")
     public ProjectFundPrepareResponse prepareFundProject(
             @AuthenticationPrincipal WalletPrincipal principal,
-            @PathVariable UUID projectId
+            @PathVariable UUID projectId,
+            @RequestBody(required = false) ProjectFundPrepareRequest bodyRequest,
+            @RequestParam(value = "milestoneId", required = false) UUID milestoneId
     ) {
-        return projectService.prepareFundProject(principal.getUserId(), projectId);
+        ProjectFundPrepareRequest finalRequest = bodyRequest;
+
+        if ((finalRequest == null || finalRequest.getMilestoneId() == null) && milestoneId != null) {
+            finalRequest = ProjectFundPrepareRequest.builder()
+                    .milestoneId(milestoneId)
+                    .build();
+        }
+
+        if (finalRequest == null || finalRequest.getMilestoneId() == null) {
+            throw new BadRequestException("milestoneId is required either in request body or as query parameter");
+        }
+
+        return projectService.prepareFundProject(principal.getUserId(), projectId, finalRequest);
     }
 
     @PostMapping("/fund/confirm")

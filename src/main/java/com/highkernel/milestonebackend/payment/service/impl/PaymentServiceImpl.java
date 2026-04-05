@@ -66,6 +66,10 @@ public class PaymentServiceImpl implements PaymentService {
             throw new BadRequestException("Payment already released for this milestone");
         }
 
+        if (milestone.getAssignedFreelancer() == null) {
+            throw new BadRequestException("Milestone is not assigned to any freelancer");
+        }
+
         User freelancer = getUserOrThrow(milestone.getAssignedFreelancer());
 
         if (freelancer.getWalletAddress() == null || freelancer.getWalletAddress().isBlank()) {
@@ -78,9 +82,12 @@ public class PaymentServiceImpl implements PaymentService {
                         .appId(project.getAppId())
                         .milestoneId(milestone.getId().toString())
                         .freelancerAddress(freelancer.getWalletAddress())
-                        .amount(milestone.getAmount())
                         .build()
         );
+
+        if (blockchainResponse.getTxns() == null || blockchainResponse.getTxns().isEmpty()) {
+            throw new BadRequestException("FastAPI returned empty release transaction payload");
+        }
 
         return PaymentPrepareReleaseResponse.builder()
                 .projectId(project.getId())
@@ -88,8 +95,8 @@ public class PaymentServiceImpl implements PaymentService {
                 .freelancerId(milestone.getAssignedFreelancer())
                 .appId(project.getAppId())
                 .amount(milestone.getAmount())
-                .unsignedTxn(blockchainResponse.getTxn())
-                .message("Unsigned release transaction prepared successfully")
+                .unsignedTxns(blockchainResponse.getTxns())
+                .message("Unsigned release transaction(s) prepared successfully")
                 .build();
     }
 
@@ -103,6 +110,10 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (request.getTxnHash() == null || request.getTxnHash().isBlank()) {
             throw new BadRequestException("txnHash is required after blockchain submission");
+        }
+
+        if (request.getTxnHash().startsWith("simulated_hash_")) {
+            throw new BadRequestException("Simulated txnHash is not allowed. Please complete real wallet transaction.");
         }
 
         Milestone milestone = getMilestoneOrThrow(request.getMilestoneId());
@@ -152,6 +163,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (!ALLOWED_PAYMENT_STATUSES.contains(normalizedStatus)) {
             throw new BadRequestException("Invalid payment status. Allowed values: PENDING, SUCCESS, FAILED, RELEASED");
+        }
+
+        if (("RELEASED".equals(normalizedStatus) || "SUCCESS".equals(normalizedStatus))
+                && (payment.getTxnHash() == null || payment.getTxnHash().isBlank())) {
+            throw new BadRequestException("Cannot mark payment as RELEASED or SUCCESS before txnHash is stored");
         }
 
         payment.setStatus(normalizedStatus);

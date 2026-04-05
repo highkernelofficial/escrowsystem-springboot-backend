@@ -6,13 +6,12 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
-
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReleaseMilestoneTxnRequest {
+
     private String sender;
 
     @JsonProperty("app_id")
@@ -23,6 +22,4 @@ public class ReleaseMilestoneTxnRequest {
 
     @JsonProperty("freelancer_address")
     private String freelancerAddress;
-
-    private BigDecimal amount;
 }

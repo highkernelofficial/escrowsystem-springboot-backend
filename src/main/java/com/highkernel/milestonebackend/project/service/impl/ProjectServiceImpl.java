@@ -21,6 +21,7 @@ import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectDeployConfirmRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectDeployPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectFundConfirmRequest;
+import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
@@ -36,6 +37,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -267,8 +269,12 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectFundPrepareResponse prepareFundProject(String authenticatedUserId, UUID projectId) {
+    public ProjectFundPrepareResponse prepareFundProject(String authenticatedUserId, UUID projectId, ProjectFundPrepareRequest request) {
         UUID userId = parseUUID(authenticatedUserId);
+
+        if (request == null || request.getMilestoneId() == null) {
+            throw new BadRequestException("Milestone ID is required");
+        }
 
         Project project = getProjectOrThrow(projectId);
         validateProjectOwnership(userId, project);
@@ -281,6 +287,20 @@ public class ProjectServiceImpl implements ProjectService {
             throw new BadRequestException("Project is already funded");
         }
 
+        Milestone milestone = getMilestoneOrThrow(request.getMilestoneId());
+
+        if (!projectId.equals(milestone.getProjectId())) {
+            throw new BadRequestException("Milestone does not belong to this project");
+        }
+
+        if (milestone.getAmount() == null) {
+            throw new BadRequestException("Milestone amount is missing");
+        }
+
+        if (milestone.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Milestone amount must be greater than zero");
+        }
+
         User client = getUserOrThrow(userId);
 
         if (client.getWalletAddress() == null || client.getWalletAddress().isBlank()) {
@@ -291,16 +311,23 @@ public class ProjectServiceImpl implements ProjectService {
                 FundProjectTxnRequest.builder()
                         .sender(client.getWalletAddress())
                         .appId(project.getAppId())
-                        .amount(project.getTotalAmount())
+                        .milestoneId(milestone.getId().toString())
+                        .amount(milestone.getAmount())
                         .build()
         );
 
+        if (response.getTxns() == null || response.getTxns().isEmpty()) {
+            throw new BadRequestException("FastAPI returned empty funding transaction payload");
+        }
+
         return ProjectFundPrepareResponse.builder()
                 .projectId(project.getId())
+                .milestoneId(milestone.getId())
                 .appId(project.getAppId())
-                .totalAmount(project.getTotalAmount())
+                .amount(milestone.getAmount())
                 .unsignedTxn(response.getTxn())
-                .message("Unsigned funding transaction prepared successfully")
+                .unsignedTxns(response.getTxns())
+                .message("Unsigned funding transaction(s) prepared successfully")
                 .build();
     }
 
@@ -668,6 +695,11 @@ public class ProjectServiceImpl implements ProjectService {
     private Project getProjectOrThrow(UUID projectId) {
         return projectRepository.findById(projectId)
                 .orElseThrow(() -> new BadRequestException("Project not found"));
+    }
+
+    private Milestone getMilestoneOrThrow(UUID milestoneId) {
+        return milestoneRepository.findById(milestoneId)
+                .orElseThrow(() -> new BadRequestException("Milestone not found"));
     }
 
     private User getUserOrThrow(UUID userId) {

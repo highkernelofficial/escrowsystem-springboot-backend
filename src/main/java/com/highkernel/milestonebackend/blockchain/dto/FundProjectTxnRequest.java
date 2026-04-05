@@ -13,10 +13,14 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 public class FundProjectTxnRequest {
+
     private String sender;
 
     @JsonProperty("app_id")
     private Long appId;
+
+    @JsonProperty("milestone_id")
+    private String milestoneId;
 
     private BigDecimal amount;
 }

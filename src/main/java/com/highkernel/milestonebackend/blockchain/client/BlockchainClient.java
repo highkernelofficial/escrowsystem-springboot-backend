@@ -62,10 +62,21 @@ public class BlockchainClient {
         String url = blockchainBaseUrl + path;
         try {
             BlockchainTxnResponse response = restTemplate.postForObject(url, request, BlockchainTxnResponse.class);
-            if (response == null || response.getTxn() == null || response.getTxn().isBlank()) {
-                throw new BadRequestException("FastAPI returned empty txn for " + action);
+
+            if (response == null || response.getTxns() == null || response.getTxns().isEmpty()) {
+                throw new BadRequestException("FastAPI returned empty txn payload for " + action);
             }
+
+            boolean hasAnyBlankTxn = response.getTxns().stream()
+                    .anyMatch(txn -> txn == null || txn.isBlank());
+
+            if (hasAnyBlankTxn) {
+                throw new BadRequestException("FastAPI returned invalid txn payload for " + action);
+            }
+
             return response;
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             throw new BadRequestException("Failed to " + action + " via FastAPI: " + e.getMessage());
         }
