@@ -18,15 +18,11 @@ import java.util.UUID;
 public class ProjectFundPrepareResponse {
 
     private UUID projectId;
-    private UUID milestoneId;
     private Long appId;
-    private BigDecimal amount;
+    private BigDecimal totalAmount;
 
-    // backward compatibility for old frontend
-    private String unsignedTxn;
-
-    // new grouped transaction support
+    /** Ordered list of base64-encoded msgpack transactions (1 payment + N app calls) */
     private List<String> unsignedTxns;
 
     private String message;
-}
+}

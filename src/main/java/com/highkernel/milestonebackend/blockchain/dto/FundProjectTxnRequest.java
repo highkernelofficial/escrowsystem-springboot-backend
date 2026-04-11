@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 @Builder
@@ -19,8 +20,22 @@ public class FundProjectTxnRequest {
     @JsonProperty("app_id")
     private Long appId;
 
-    @JsonProperty("milestone_id")
-    private String milestoneId;
+    /** All milestones for this project — each gets its own on-chain state entry */
+    private List<MilestoneFundItem> milestones;
 
-    private BigDecimal amount;
+    /** Sum of all milestone amounts (in ALGOs) sent as single PaymentTxn */
+    @JsonProperty("total_amount")
+    private BigDecimal totalAmount;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MilestoneFundItem {
+
+        @JsonProperty("milestone_id")
+        private String milestoneId;
+
+        private BigDecimal amount;
+    }
 }

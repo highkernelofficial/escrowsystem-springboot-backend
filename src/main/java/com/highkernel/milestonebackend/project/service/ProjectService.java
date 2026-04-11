@@ -7,7 +7,7 @@ import com.highkernel.milestonebackend.project.dto.ProjectCreateRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectDeployConfirmRequest;
 import com.highkernel.milestonebackend.project.dto.ProjectDeployPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectFundConfirmRequest;
-import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareRequest;
+
 import com.highkernel.milestonebackend.project.dto.ProjectFundPrepareResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectResponse;
 import com.highkernel.milestonebackend.project.dto.ProjectUpdateRequest;
@@ -30,7 +30,7 @@ public interface ProjectService {
 
     ProjectResponse confirmDeployContract(String authenticatedUserId, ProjectDeployConfirmRequest request);
 
-    ProjectFundPrepareResponse prepareFundProject(String authenticatedUserId, UUID projectId, ProjectFundPrepareRequest request);
+    ProjectFundPrepareResponse prepareFundProject(String authenticatedUserId, UUID projectId);
 
     ProjectResponse confirmFundProject(String authenticatedUserId, ProjectFundConfirmRequest request);
 
