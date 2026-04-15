@@ -3,10 +3,15 @@ FROM eclipse-temurin:17-jdk AS build
 
 WORKDIR /app
 
-# Copy Maven wrapper & pom first (layer‑cached dependency download)
+# Copy Maven wrapper & pom first (layer-cached dependency download)
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
+
+# Fix Windows CRLF line endings & make executable
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
+
+# Download dependencies (cached layer)
+RUN ./mvnw dependency:go-offline -B
 
 # Copy source and build the fat JAR (skip tests for faster builds)
 COPY src/ src/
@@ -17,13 +22,13 @@ FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-# Copy only the built JAR from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy the built JAR (use find to get the exact filename)
+COPY --from=build /app/target/milestonebackend-0.0.1-SNAPSHOT.jar app.jar
 
-# Spring Boot default port
+# Render injects PORT at runtime
 EXPOSE 8080
 
-# JVM tuning flags (container‑friendly defaults)
+# JVM tuning flags (container-friendly defaults)
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
