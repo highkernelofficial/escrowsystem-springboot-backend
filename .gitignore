@@ -3,11 +3,11 @@
 .env.*
 !.env.example
 
-# Spring Boot secret config
-src/main/resources/application.properties
-src/main/resources/application.yml
+# Spring Boot profile-specific configs (may contain real secrets)
+# NOTE: application.properties is NOT ignored — it only has ${ENV_VAR} references
 src/main/resources/application-dev.properties
 src/main/resources/application-prod.properties
+src/main/resources/application-local.properties
 
 # IntelliJ
 .idea/
