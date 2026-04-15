@@ -28,7 +28,7 @@ COPY --from=build /app/target/milestonebackend-0.0.1-SNAPSHOT.jar app.jar
 # Render injects PORT at runtime
 EXPOSE 8080
 
-# JVM tuning flags (container-friendly defaults)
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+# JVM tuning flags (container-friendly + force IPv4 for Render)
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.net.preferIPv4Stack=true"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
