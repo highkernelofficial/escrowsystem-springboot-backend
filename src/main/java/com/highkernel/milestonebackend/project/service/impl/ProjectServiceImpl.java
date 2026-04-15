@@ -52,6 +52,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final AiValidatorClient aiValidatorClient;
     private final BlockchainClient blockchainClient;
     private final UserRepository userRepository;
+    private final com.highkernel.milestonebackend.payment.repository.PaymentRepository paymentRepository;
 
     @Value("${spring.datasource.url:NOT_FOUND}")
     private String datasourceUrl;
@@ -741,7 +742,16 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private MilestoneResponse mapMilestoneToResponse(Milestone milestone) {
+        String txnHash = null;
+        if (milestone.getId() != null && paymentRepository != null) {
+            java.util.List<com.highkernel.milestonebackend.payment.entity.Payment> payments = paymentRepository.findByMilestoneId(milestone.getId());
+            if (payments != null && !payments.isEmpty()) {
+                txnHash = payments.get(0).getTxnHash();
+            }
+        }
+
         return MilestoneResponse.builder()
+                .txnHash(txnHash)
                 .id(milestone.getId())
                 .projectId(milestone.getProjectId())
                 .title(milestone.getTitle())

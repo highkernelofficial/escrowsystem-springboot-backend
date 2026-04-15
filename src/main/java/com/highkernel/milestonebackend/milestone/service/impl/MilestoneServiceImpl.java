@@ -37,6 +37,7 @@ public class MilestoneServiceImpl implements MilestoneService {
 
     private final MilestoneRepository milestoneRepository;
     private final ProjectRepository projectRepository;
+    private final com.highkernel.milestonebackend.payment.repository.PaymentRepository paymentRepository;
 
     @Override
     public MilestoneResponse createMilestone(String authUserId, MilestoneCreateRequest request) {
@@ -251,7 +252,16 @@ public class MilestoneServiceImpl implements MilestoneService {
     }
 
     private MilestoneResponse mapToResponse(Milestone milestone) {
+        String txnHash = null;
+        if (milestone.getId() != null && paymentRepository != null) {
+            java.util.List<com.highkernel.milestonebackend.payment.entity.Payment> payments = paymentRepository.findByMilestoneId(milestone.getId());
+            if (payments != null && !payments.isEmpty()) {
+                txnHash = payments.get(0).getTxnHash();
+            }
+        }
+
         return MilestoneResponse.builder()
+                .txnHash(txnHash)
                 .id(milestone.getId())
                 .projectId(milestone.getProjectId())
                 .title(milestone.getTitle())

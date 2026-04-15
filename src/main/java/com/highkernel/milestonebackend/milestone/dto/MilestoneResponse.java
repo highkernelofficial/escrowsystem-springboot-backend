@@ -26,4 +26,5 @@ public class MilestoneResponse {
     private String reassignmentReason;
     private BigDecimal percentage;
     private OffsetDateTime createdAt;
+    private String txnHash;
 }

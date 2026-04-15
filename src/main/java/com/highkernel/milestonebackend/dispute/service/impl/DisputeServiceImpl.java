@@ -156,6 +156,27 @@ public class DisputeServiceImpl implements DisputeService {
         return mapToResponse(disputeRepository.save(dispute));
     }
 
+    @Override
+    public List<DisputeResponse> getDisputesByProject(String authUserId, UUID projectId) {
+        UUID userId = parseUUID(authUserId);
+
+        Project project = getProjectOrThrow(projectId);
+        boolean isClient = project.getClientId() != null && project.getClientId().equals(userId);
+
+        List<Milestone> milestones = milestoneRepository.findByProjectIdOrderByCreatedAtAsc(projectId);
+        boolean isFreelancer = milestones.stream()
+                .anyMatch(m -> m.getAssignedFreelancer() != null && m.getAssignedFreelancer().equals(userId));
+
+        if (!isClient && !isFreelancer) {
+            throw new BadRequestException("Unauthorized to view project disputes");
+        }
+
+        return disputeRepository.findByProjectIdOrderByCreatedAtDesc(projectId)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
     private Dispute getDisputeOrThrow(UUID disputeId) {
         return disputeRepository.findById(disputeId)
                 .orElseThrow(() -> new BadRequestException("Dispute not found"));

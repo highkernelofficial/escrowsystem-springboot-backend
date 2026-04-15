@@ -18,4 +18,6 @@ public interface DisputeService {
     DisputeResponse getDisputeById(String authUserId, UUID disputeId);
 
     DisputeResponse updateDisputeStatus(String authUserId, UUID disputeId, DisputeStatusUpdateRequest request);
-}
+
+    List<DisputeResponse> getDisputesByProject(String authUserId, UUID projectId);
+}

@@ -34,6 +34,14 @@ public class DisputeController {
         return disputeService.getDisputesByMilestone(principal.getUserId(), milestoneId);
     }
 
+    @GetMapping("/project/{projectId}")
+    public List<DisputeResponse> getByProject(
+            @AuthenticationPrincipal WalletPrincipal principal,
+            @PathVariable UUID projectId
+    ) {
+        return disputeService.getDisputesByProject(principal.getUserId(), projectId);
+    }
+
     @GetMapping("/me")
     public List<DisputeResponse> getMy(
             @AuthenticationPrincipal WalletPrincipal principal
@@ -57,4 +65,4 @@ public class DisputeController {
     ) {
         return disputeService.updateDisputeStatus(principal.getUserId(), id, request);
     }
-}
+}
